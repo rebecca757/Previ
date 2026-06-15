@@ -91,12 +91,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:description", content: "My Health Compass is a personal AI health assistant web app for managing health records and understanding medical information." },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/c5da5ee3-d0b2-4c0f-81ee-f3d3569e2084/id-preview-9407e23a--22bf5dcb-0f73-4555-a17a-4d0abc592f48.lovable.app-1780651397559.png" },
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/c5da5ee3-d0b2-4c0f-81ee-f3d3569e2084/id-preview-9407e23a--22bf5dcb-0f73-4555-a17a-4d0abc592f48.lovable.app-1780651397559.png" },
+      // --- PWA ---
+      { name: "theme-color", content: "#0F6E56" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "apple-mobile-web-app-title", content: "Previ" },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
+      // --- PWA ---
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "icon", href: "/favicon.ico", sizes: "any" },
+      { rel: "icon", type: "image/png", href: "/icon-192x192.png", sizes: "192x192" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -121,6 +132,24 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // PWA: registra il service worker (solo in produzione, lato client).
+  useEffect(() => {
+    if (!import.meta.env.PROD) return;
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+
+    const register = () => {
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.error("Service worker registration failed:", error);
+      });
+    };
+
+    if (document.readyState === "complete") {
+      register();
+    } else {
+      window.addEventListener("load", register, { once: true });
+    }
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
