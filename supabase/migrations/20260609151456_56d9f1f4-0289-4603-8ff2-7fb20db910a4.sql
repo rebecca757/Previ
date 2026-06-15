@@ -1,0 +1,1 @@
+ALTER TABLE public.family_history ADD COLUMN IF NOT EXISTS relation_degree text;

@@ -1,0 +1,1 @@
+ALTER TABLE public.reminders ADD COLUMN IF NOT EXISTS priority text NOT NULL DEFAULT 'normal' CHECK (priority IN ('urgent','normal')); ALTER TABLE public.reminders ADD COLUMN IF NOT EXISTS priority_reason text;
