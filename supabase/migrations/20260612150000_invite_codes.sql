@@ -11,7 +11,7 @@ CREATE TABLE invite_codes (
 );
 
 INSERT INTO invite_codes (code, description, max_uses)
-VALUES ('ALLEeREBBI2026', 'Beta tester - primo gruppo', 20);
+VALUES ('ALLEEREBBI2026!', 'Beta tester - primo gruppo', 20);
 
 ALTER TABLE invite_codes ENABLE ROW LEVEL SECURITY;
 

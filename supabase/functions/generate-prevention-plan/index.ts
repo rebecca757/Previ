@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { KNOWLEDGE_BASE, buildKBReference, type KBRule, type Sex } from "../_shared/prevention-kb.ts";
+import { callClaude } from "../_shared/anthropic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,7 +49,6 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
     const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: `Bearer ${token}` } } });
     const { data: userData } = await userClient.auth.getUser();
@@ -163,23 +163,16 @@ OUTPUT (JSON OBBLIGATORIO):
 
 Ordina l'array "plan" mettendo PRIMA le voci "overdue", poi "upcoming", poi "future". Massimo 10 voci. Non includere mai voci non presenti nella knowledge base sopra. Non duplicare promemoria già esistenti.`;
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "system", content: system }, { role: "user", content: "Genera ora il piano di prevenzione personalizzato in JSON." }],
-        response_format: { type: "json_object" },
-      }),
+    const ai = await callClaude({
+      system: `${system}\n\nRispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo o markdown attorno.`,
+      messages: [{ role: "user", content: "Genera ora il piano di prevenzione personalizzato in JSON." }],
+      max_tokens: 4096,
     });
-    if (aiRes.status === 429) return new Response(JSON.stringify({ error: "Rate limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    if (aiRes.status === 402) return new Response(JSON.stringify({ error: "Crediti AI esauriti" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      return new Response(JSON.stringify({ error: "AI error", detail: t }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (ai.status === 429) return new Response(JSON.stringify({ error: "Rate limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!ai.ok) {
+      return new Response(JSON.stringify({ error: "AI error", detail: ai.errorText }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const aiJson = await aiRes.json();
-    const raw = aiJson.choices?.[0]?.message?.content || "{}";
+    const raw = (ai.text || "{}").replace(/^```json\s*|\s*```$/g, "").trim();
     let parsed: any = { plan: [], summary: "" };
     try { parsed = JSON.parse(raw); } catch { /* keep default */ }
 

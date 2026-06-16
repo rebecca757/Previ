@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callClaude } from "../_shared/anthropic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +14,6 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
     const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: `Bearer ${token}` } } });
     const { data: userData } = await userClient.auth.getUser();
@@ -104,27 +104,18 @@ REGOLE TASSATIVE:
 - Rispondi SOLO con il testo del consiglio, senza preamboli.`;
 
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: context },
-        ],
-      }),
+    const ai = await callClaude({
+      system: systemPrompt,
+      messages: [{ role: "user", content: context }],
+      max_tokens: 300,
     });
 
-    if (aiRes.status === 429) return new Response(JSON.stringify({ error: "Rate limit, riprova tra poco." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    if (aiRes.status === 402) return new Response(JSON.stringify({ error: "Crediti AI esauriti." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      return new Response(JSON.stringify({ error: "AI error", detail: t }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (ai.status === 429) return new Response(JSON.stringify({ error: "Rate limit, riprova tra poco." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!ai.ok) {
+      return new Response(JSON.stringify({ error: "AI error", detail: ai.errorText }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const aiJson = await aiRes.json();
-    const advice = (aiJson.choices?.[0]?.message?.content || "").trim();
+    const advice = (ai.text || "").trim();
 
     const stats = {
       month,

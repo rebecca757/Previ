@@ -1,6 +1,8 @@
 // Classifies a free-text family-history condition into one of the standardized
 // prevention categories used by the official screenings dataset.
 
+import { callClaude } from "../_shared/anthropic.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -66,27 +68,16 @@ Deno.serve(async (req) => {
     const quick = quickClassify(text);
     if (quick) return json({ ok: true, category: quick });
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) return json({ ok: false, error: "missing_lovable_api_key" });
-
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Condizione: "${text}"` },
-        ],
-      }),
+    const ai = await callClaude({
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Condizione: "${text}"` }],
+      max_tokens: 64,
     });
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      console.error("[classify-family-condition] AI error", aiRes.status, t);
-      return json({ ok: false, error: "ai_http_error", status: aiRes.status, detail: t });
+    if (!ai.ok) {
+      console.error("[classify-family-condition] AI error", ai.status, ai.errorText);
+      return json({ ok: false, error: "ai_http_error", status: ai.status, detail: ai.errorText });
     }
-    const aiJson = await aiRes.json();
-    const raw: string = aiJson.choices?.[0]?.message?.content || "";
+    const raw: string = ai.text || "";
     const match = raw.match(/\{[\s\S]*\}/);
     let category = "other";
     if (match) {

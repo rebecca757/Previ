@@ -1,5 +1,7 @@
 // Classifies a medication name and suggests a typical condition for the user.
 
+import { callClaude } from "../_shared/anthropic.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -42,28 +44,16 @@ Deno.serve(async (req) => {
     const text = String(name || "").trim();
     if (!text) return json({ ok: true, category: "other", typical_condition: null, suggest_condition: false });
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) return json({ ok: false, error: "missing_lovable_api_key" });
-
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Farmaco: "${text}"` },
-        ],
-        response_format: { type: "json_object" },
-      }),
+    const ai = await callClaude({
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: `Farmaco: "${text}"` }],
+      max_tokens: 128,
     });
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      console.error("[classify-medication] AI error", aiRes.status, t);
-      return json({ ok: false, error: "ai_http_error", status: aiRes.status, detail: t });
+    if (!ai.ok) {
+      console.error("[classify-medication] AI error", ai.status, ai.errorText);
+      return json({ ok: false, error: "ai_http_error", status: ai.status, detail: ai.errorText });
     }
-    const aiJson = await aiRes.json();
-    const raw: string = aiJson.choices?.[0]?.message?.content || "";
+    const raw: string = ai.text || "";
     const match = raw.match(/\{[\s\S]*\}/);
     let category = "other";
     let typical_condition: string | null = null;

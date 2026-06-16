@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildSystemPrompt } from "../_shared/prompt.ts";
+import { callClaude, toAnthropicContent } from "../_shared/anthropic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,7 +58,6 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
     const userClient = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: `Bearer ${token}` } } });
     const { data: userData } = await userClient.auth.getUser();
@@ -122,24 +122,19 @@ Alla fine aggiungi un blocco JSON markdown con questa forma esatta:
 
 Il campo body_systems deve contenere da 1 a 4 organi/apparati/aree del corpo PERTINENTI al documento, scelti SOLO da questo elenco esatto: ${JSON.stringify(BODY_SYSTEMS)}.`;
 
-    const userMessage: any = fileBlock
-      ? { role: "user", content: [{ type: "text", text: userPrompt }, fileBlock] }
-      : { role: "user", content: userPrompt };
+    const userContent: any = fileBlock
+      ? [{ type: "text", text: userPrompt }, fileBlock]
+      : userPrompt;
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [{ role: "system", content: system.replace(/OUTPUT FORMAT:[\s\S]*$/, "") }, userMessage],
-      }),
+    const ai = await callClaude({
+      system: system.replace(/OUTPUT FORMAT:[\s\S]*$/, ""),
+      messages: [{ role: "user", content: toAnthropicContent(userContent) }],
+      max_tokens: 4096,
     });
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      return jsonResponse({ error: "AI error", detail: t }, aiRes.status);
+    if (!ai.ok) {
+      return jsonResponse({ error: "AI error", detail: ai.errorText }, ai.status || 500);
     }
-    const aiJson = await aiRes.json();
-    let interpretation: string = aiJson.choices?.[0]?.message?.content || "";
+    let interpretation: string = ai.text || "";
 
     let body_systems: string[] = [];
     const jsonMatch = interpretation.match(/```json\s*(\{[\s\S]*?\})\s*```/);

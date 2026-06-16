@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callClaude, toAnthropicContent } from "../_shared/anthropic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,15 +51,15 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const ANON = Deno.env.get("SUPABASE_ANON_KEY");
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     console.log("[extract-health-info] env check", {
       hasSupabaseUrl: !!SUPABASE_URL,
       hasAnon: !!ANON,
       hasService: !!SERVICE,
-      hasLovableKey: !!LOVABLE_API_KEY,
+      hasAnthropicKey: !!ANTHROPIC_API_KEY,
     });
-    if (!LOVABLE_API_KEY) {
-      return json({ ok: false, error: "missing_lovable_api_key", detail: "LOVABLE_API_KEY non configurato nelle variabili d'ambiente della funzione." });
+    if (!ANTHROPIC_API_KEY) {
+      return json({ ok: false, error: "missing_anthropic_api_key", detail: "ANTHROPIC_API_KEY non configurato nei secret della funzione." });
     }
     if (!SUPABASE_URL || !ANON) {
       return json({ ok: false, error: "missing_supabase_env", detail: "SUPABASE_URL o SUPABASE_ANON_KEY mancanti." });
@@ -90,26 +91,18 @@ Deno.serve(async (req) => {
     if (image_data_url) parts.push({ type: "image_url", image_url: { url: image_data_url } });
     else if (legacyFileUrl) parts.push({ type: "image_url", image_url: { url: legacyFileUrl } });
 
-    console.log("[extract-health-info] calling AI gateway, text length:", userText.length);
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: parts },
-        ],
-      }),
+    console.log("[extract-health-info] calling Anthropic, text length:", userText.length);
+    const ai = await callClaude({
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: toAnthropicContent(parts) }],
+      max_tokens: 1024,
     });
-    console.log("[extract-health-info] AI status:", aiRes.status);
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      console.error("[extract-health-info] AI error body:", t);
-      return json({ ok: false, error: "ai_http_error", status: aiRes.status, detail: t });
+    console.log("[extract-health-info] AI status:", ai.status);
+    if (!ai.ok) {
+      console.error("[extract-health-info] AI error body:", ai.errorText);
+      return json({ ok: false, error: "ai_http_error", status: ai.status, detail: ai.errorText });
     }
-    const aiJson = await aiRes.json();
-    const raw: string = aiJson.choices?.[0]?.message?.content || "";
+    const raw: string = ai.text || "";
     console.log("[extract-health-info] AI raw content preview:", raw.slice(0, 300));
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) {
