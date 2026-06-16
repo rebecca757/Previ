@@ -2,14 +2,17 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 
+// Un account collegato è un vero utente (email/password propri) al quale
+// l'utente loggato ha ottenuto accesso tramite la tabella account_links.
 export type ManagedProfile = {
-  id: string;
+  id: string; // user_id dell'account collegato
   full_name: string | null;
   date_of_birth: string | null;
   relation: string;
-  link_id: string;
+  link_id: string; // account_links.id
 };
 
+// Mantenuto solo per retro-compatibilità di tipo con eventuali import esistenti.
 export type NewManagedProfile = {
   id: string;
   name: string;
@@ -50,78 +53,70 @@ export function ActiveProfileProvider({ children }: { children: ReactNode }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [profileType, setProfileType] = useState<ProfileType>("owner");
   const [managed, setManaged] = useState<ManagedProfile[]>([]);
-  const [newManagedProfiles, setNewManagedProfiles] = useState<NewManagedProfile[]>([]);
   const [ownProfile, setOwnProfile] = useState<any>(null);
-
-  const refreshNewManaged = async (): Promise<void> => {
-    if (!user) { setNewManagedProfiles([]); return; }
-    const { data } = await (supabase as any)
-      .from("managed_profiles")
-      .select("id,name,date_of_birth,sex,relation,blood_type,notes,avatar_color")
-      .eq("owner_user_id", user.id)
-      .order("created_at", { ascending: true });
-    setNewManagedProfiles((data || []) as NewManagedProfile[]);
-  };
 
   const refresh = async () => {
     if (!user) {
       setActiveId(null);
       setProfileType("owner");
       setManaged([]);
-      setNewManagedProfiles([]);
       setOwnProfile(null);
       return;
     }
-    const [{ data: own }, { data: links }, nmData] = await Promise.all([
-      supabase.from("profiles").select("id,full_name,date_of_birth").eq("id", user.id).maybeSingle(),
+
+    const [{ data: own }, linksRes] = await Promise.all([
       supabase
-        .from("family_links")
-        .select("id,managed_user_id,relation,link_type,status")
-        .eq("caregiver_user_id", user.id)
-        .eq("link_type", "caregiver")
-        .eq("status", "active"),
+        .from("profiles")
+        .select("id,full_name,date_of_birth")
+        .eq("id", user.id)
+        .maybeSingle(),
       (supabase as any)
-        .from("managed_profiles")
-        .select("id,name,date_of_birth,sex,relation,blood_type,notes,avatar_color")
-        .eq("owner_user_id", user.id)
-        .order("created_at", { ascending: true }),
+        .from("account_links")
+        .select("id,linked_user_id,status")
+        .eq("owner_id", user.id)
+        .eq("status", "accepted"),
     ]);
-    if (nmData.error) {
-      console.error("[ActiveProfile] managed_profiles query error — code:", nmData.error.code, "message:", nmData.error.message);
-      if (nmData.error.code === "42P01") {
-        console.error("[ActiveProfile] ⚠️ Table 'managed_profiles' does NOT exist in your Supabase database.");
-        console.error("[ActiveProfile] → Go to Supabase Dashboard > SQL Editor and run the migration in supabase/migrations/20260612140000_managed_profiles.sql");
+
+    if (linksRes.error) {
+      console.error(
+        "[ActiveProfile] account_links query error — code:",
+        linksRes.error.code,
+        "message:",
+        linksRes.error.message,
+      );
+      if (linksRes.error.code === "42P01") {
+        console.error(
+          "[ActiveProfile] ⚠️ Table 'account_links' does NOT exist. Run supabase/migrations/20260616120000_account_links.sql in the Supabase SQL Editor.",
+        );
       }
     }
     setOwnProfile(own || null);
 
-    const managedIds = (links || []).map((l: any) => l.managed_user_id);
-    let managedList: ManagedProfile[] = [];
-    if (managedIds.length) {
+    const links = (linksRes.data || []) as { id: string; linked_user_id: string; status: string }[];
+    const linkedIds = links.map((l) => l.linked_user_id);
+
+    let list: ManagedProfile[] = [];
+    if (linkedIds.length) {
       const { data: profs } = await supabase
         .from("profiles")
         .select("id,full_name,date_of_birth")
-        .in("id", managedIds);
-      managedList = (profs || []).map((p: any) => {
-        const link = (links || []).find((l: any) => l.managed_user_id === p.id);
-        return { ...p, relation: link?.relation || "", link_id: link?.id || "" };
+        .in("id", linkedIds);
+      list = linkedIds.map((id) => {
+        const p = (profs || []).find((x: any) => x.id === id);
+        const link = links.find((l) => l.linked_user_id === id);
+        return {
+          id,
+          full_name: p?.full_name ?? null,
+          date_of_birth: p?.date_of_birth ?? null,
+          relation: "Account collegato",
+          link_id: link?.id || "",
+        };
       });
     }
-    setManaged(managedList);
-
-    const newMp = (nmData.data || []) as NewManagedProfile[];
-    setNewManagedProfiles(newMp);
+    setManaged(list);
 
     const storedId = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    const storedType = typeof window !== "undefined" ? localStorage.getItem(TYPE_KEY) : null;
-
-    if (storedType === "new_managed" && storedId && newMp.find((mp) => mp.id === storedId)) {
-      setActiveId(storedId);
-      setProfileType("new_managed");
-    } else if (storedId === user.id) {
-      setActiveId(storedId);
-      setProfileType("owner");
-    } else if (storedId && managedIds.includes(storedId)) {
+    if (storedId && linkedIds.includes(storedId)) {
       setActiveId(storedId);
       setProfileType("family_link");
     } else {
@@ -130,7 +125,9 @@ export function ActiveProfileProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [user?.id]);
+  useEffect(() => {
+    refresh(); /* eslint-disable-next-line */
+  }, [user?.id]);
 
   const setActive = (id: string) => {
     const type: ProfileType = id === user?.id ? "owner" : "family_link";
@@ -142,38 +139,20 @@ export function ActiveProfileProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const setActiveMp = (mpId: string) => {
-    setActiveId(mpId);
-    setProfileType("new_managed");
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, mpId);
-      localStorage.setItem(TYPE_KEY, "new_managed");
-    }
-  };
-
   const queryFilter: ProfileQueryFilter | null = !activeId
     ? null
-    : profileType === "new_managed"
-      ? { col: "managed_profile_id", val: activeId }
-      : { col: "user_id", val: activeId };
-
-  const activeManagedProfile: NewManagedProfile | null =
-    profileType === "new_managed" && activeId
-      ? newManagedProfiles.find((mp) => mp.id === activeId) ?? null
-      : null;
+    : { col: "user_id", val: activeId };
 
   const activeProfile =
-    profileType === "new_managed"
-      ? null
-      : activeId === user?.id
-        ? ownProfile
-        : managed.find((m) => m.id === activeId)
-          ? {
-              id: activeId!,
-              full_name: managed.find((m) => m.id === activeId)!.full_name,
-              date_of_birth: managed.find((m) => m.id === activeId)!.date_of_birth,
-            }
-          : null;
+    activeId === user?.id
+      ? ownProfile
+      : managed.find((m) => m.id === activeId)
+        ? {
+            id: activeId!,
+            full_name: managed.find((m) => m.id === activeId)!.full_name,
+            date_of_birth: managed.find((m) => m.id === activeId)!.date_of_birth,
+          }
+        : null;
 
   return (
     <ActiveProfileContext.Provider
@@ -182,15 +161,16 @@ export function ActiveProfileProvider({ children }: { children: ReactNode }) {
         activeId,
         activeProfile,
         managed,
-        newManagedProfiles,
+        // managed_profiles abbandonato — stub per retro-compatibilità dei consumer.
+        newManagedProfiles: [],
         profileType,
         queryFilter,
-        activeManagedProfile,
+        activeManagedProfile: null,
         isManaging: profileType !== "owner",
         setActive,
-        setActiveMp,
+        setActiveMp: () => {},
         refresh,
-        refreshNewManaged,
+        refreshNewManaged: async () => {},
       }}
     >
       {children}
