@@ -193,14 +193,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="max-w-4xl mx-auto px-4 py-6 md:py-10 fade-in">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 md:py-10 fade-in">
         <div className="flex justify-end mb-4"><ProfileSwitcher /></div>
         <ManagingBanner />
         <main>{children}</main>
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t z-40 pb-safe">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t z-40 pt-1 pb-safe">
         <div className="grid grid-cols-5">
           {nav.map((n) => {
             const active = location.pathname.startsWith(n.to);
@@ -209,9 +209,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={n.to}
                 to={n.to}
-                className={`flex flex-col items-center py-2 text-xs ${active ? "text-primary" : "text-muted-foreground"}`}
+                className={`flex flex-col items-center gap-1 py-2 text-[11px] font-medium transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}
               >
-                <Icon className="w-5 h-5 mb-0.5" />
+                <Icon className="w-[22px] h-[22px]" />
                 {n.label}
               </Link>
             );

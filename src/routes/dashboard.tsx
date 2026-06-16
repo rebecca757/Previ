@@ -255,7 +255,7 @@ function Dashboard() {
 
 function StatCard({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
   return (
-    <div className="bg-card border rounded-xl p-4">
+    <div className="bg-card border rounded-xl p-5">
       <Icon className="w-4 h-4 text-primary mb-2" />
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-xl font-semibold mt-1">{value}</div>
@@ -284,7 +284,7 @@ function MedicationsStatCard({
   const visible = meds.slice(0, 4);
   const extra = Math.max(0, meds.length - 4);
   return (
-    <div className="bg-card border rounded-xl p-4 md:col-span-1">
+    <div className="bg-card border rounded-xl p-5 md:col-span-1">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Pill className="w-4 h-4 text-primary" />
