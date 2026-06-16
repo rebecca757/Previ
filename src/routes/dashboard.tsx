@@ -241,7 +241,7 @@ function Dashboard() {
 
       <Link
         to="/archivio"
-        className="md:hidden fixed bottom-20 right-4 w-14 h-14 rounded-full bg-primary text-primary-foreground grid place-items-center shadow-lg z-30"
+        className="md:hidden fixed bottom-safe-nav right-4 w-14 h-14 rounded-full bg-primary text-primary-foreground grid place-items-center shadow-lg z-30"
       >
         <Plus className="w-6 h-6" />
       </Link>

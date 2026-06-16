@@ -135,6 +135,20 @@
   .fade-in {
     animation: fadeIn 0.4s ease-out;
   }
+
+  /* iOS safe area insets (PWA standalone). Richiede viewport-fit=cover. */
+  /* Padding inferiore pari alla gesture bar: per elementi fissi in basso. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Spazio per liberare la bottom nav mobile (5rem) + la gesture bar. */
+  .pb-safe-nav {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+  /* Offset dal fondo pari alla bottom nav + gesture bar: per FAB e simili. */
+  .bottom-safe-nav {
+    bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
 }
 
 @keyframes fadeIn {

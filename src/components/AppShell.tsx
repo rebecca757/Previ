@@ -160,7 +160,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-0 md:pl-64">
+    <div className="min-h-screen bg-background pb-safe-nav md:pb-0 md:pl-64">
       <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 border-r bg-card flex-col">
         <div className="p-6">
           <Link to="/dashboard" className="flex items-center gap-2">
@@ -200,7 +200,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t z-40">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t z-40 pb-safe">
         <div className="grid grid-cols-5">
           {nav.map((n) => {
             const active = location.pathname.startsWith(n.to);
