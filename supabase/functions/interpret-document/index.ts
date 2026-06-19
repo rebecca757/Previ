@@ -126,8 +126,16 @@ Il campo body_systems deve contenere da 1 a 4 organi/apparati/aree del corpo PER
       ? [{ type: "text", text: userPrompt }, fileBlock]
       : userPrompt;
 
+    // Strip the chat "OUTPUT FORMAT (OBBLIGATORIO)" section from the shared
+    // system prompt: it forces a JSON-only reply, which would suppress the
+    // prose interpretation we want here. (Note: original code missed this
+    // because it matched "OUTPUT FORMAT:" with a colon, which never occurs.)
+    const docSystem = system
+      .replace(/OUTPUT FORMAT[\s\S]*$/i, "")
+      .replace(/[\s═]+$/, ""); // drop the trailing decorative rule line
+
     const ai = await callClaude({
-      system: system.replace(/OUTPUT FORMAT:[\s\S]*$/, ""),
+      system: docSystem,
       messages: [{ role: "user", content: toAnthropicContent(userContent) }],
       max_tokens: 4096,
     });
@@ -146,6 +154,19 @@ Il campo body_systems deve contenere da 1 a 4 organi/apparati/aree del corpo PER
         }
         interpretation = interpretation.replace(jsonMatch[0], "").trim();
       } catch { /* ignore malformed trailing metadata */ }
+    }
+
+    // Safety net: if the model still returned a bare JSON object (e.g. the
+    // chat-style {"reply": "..."}), unwrap the human-readable text so the
+    // interpretation isn't a raw JSON blob.
+    if (interpretation.startsWith("{")) {
+      try {
+        const obj = JSON.parse(interpretation);
+        if (typeof obj.reply === "string" && obj.reply.trim()) interpretation = obj.reply.trim();
+        if (body_systems.length === 0 && Array.isArray(obj.body_systems)) {
+          body_systems = obj.body_systems.filter((x: unknown) => typeof x === "string" && BODY_SYSTEMS.includes(x as string));
+        }
+      } catch { /* not JSON — keep prose as-is */ }
     }
 
     const summary = interpretation.split("\n").find((line) => line.trim().length > 30)?.slice(0, 160) || interpretation.slice(0, 160);
