@@ -531,7 +531,7 @@ export async function chatLocal(
 
   const firstRes = await callAnthropic(apiKey, {
     model: "claude-sonnet-4-6",
-    max_tokens: 2048,
+    max_tokens: 4096,
     system,
     messages,
     tools: TOOLS,
@@ -618,7 +618,7 @@ export async function chatLocal(
 
     let reply = fallbackReply;
 
-    const secondMaxTokens = toolName === "list_reminders" ? 1024 : 256;
+    const secondMaxTokens = toolName === "list_reminders" ? 4096 : 1024;
     const secondRes = await callAnthropic(apiKey, {
       model: "claude-sonnet-4-6",
       max_tokens: secondMaxTokens,

@@ -8,15 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ThumbsUp, ThumbsDown, ArrowLeft, FileText, Sparkles, Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
+import { Markdown } from "@/components/Markdown";
 
 export const Route = createFileRoute("/referto/$id")({
   head: () => ({ meta: [{ title: "Referto — Prevì" }] }),
   component: () => <AuthGate><AppShell><DocDetail /></AppShell></AuthGate>,
 });
-
-function escapeHtml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 /** Pull readable Italian prose out of an AI interpretation that may be wrapped in JSON / code fences. */
 function extractInterpretation(raw: string | null | undefined): string {
@@ -65,25 +62,6 @@ function extractInterpretation(raw: string | null | undefined): string {
   // Strip remaining stray code fences
   s = s.replace(/```/g, "");
   return s.trim();
-}
-
-/** Convert extracted text + lightweight markdown to safe HTML. */
-function interpretationToHtml(raw: string | null | undefined): string {
-  const text = extractInterpretation(raw);
-  if (!text) return "";
-  const paragraphs = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
-  return paragraphs
-    .map((p) => {
-      let html = escapeHtml(p);
-      // **bold**
-      html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-      // *italic* (single asterisks, avoid bold)
-      html = html.replace(/(^|\s)\*([^*\n]+)\*(?=\s|$)/g, "$1<em>$2</em>");
-      // Single newlines → <br>
-      html = html.replace(/\n/g, "<br />");
-      return `<p>${html}</p>`;
-    })
-    .join("");
 }
 
 function DocDetail() {
@@ -207,10 +185,9 @@ function DocDetail() {
           <h2 className="font-semibold">Interpretazione AI</h2>
         </div>
         {doc.ai_full_interpretation && (
-          <div
-            className="prose prose-sm max-w-none text-foreground [&>p]:mb-3 [&>p:last-child]:mb-0 leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: interpretationToHtml(doc.ai_full_interpretation) }}
-          />
+          <Markdown className="leading-relaxed">
+            {extractInterpretation(doc.ai_full_interpretation)}
+          </Markdown>
         )}
         {analyzing ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
     const ai = await callClaude({
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: `Condizione: "${text}"` }],
-      max_tokens: 64,
+      max_tokens: 4096,
     });
     if (!ai.ok) {
       console.error("[classify-family-condition] AI error", ai.status, ai.errorText);

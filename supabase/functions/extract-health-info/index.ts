@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
     const ai = await callClaude({
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: toAnthropicContent(parts) }],
-      max_tokens: 1024,
+      max_tokens: 4096,
     });
     console.log("[extract-health-info] AI status:", ai.status);
     if (!ai.ok) {

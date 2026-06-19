@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const ai = await callClaude({
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: `Farmaco: "${text}"` }],
-      max_tokens: 128,
+      max_tokens: 4096,
     });
     if (!ai.ok) {
       console.error("[classify-medication] AI error", ai.status, ai.errorText);

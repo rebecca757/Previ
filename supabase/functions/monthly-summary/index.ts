@@ -107,7 +107,7 @@ REGOLE TASSATIVE:
     const ai = await callClaude({
       system: systemPrompt,
       messages: [{ role: "user", content: context }],
-      max_tokens: 300,
+      max_tokens: 4096,
     });
 
     if (ai.status === 429) return new Response(JSON.stringify({ error: "Rate limit, riprova tra poco." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Mic, Send, ChevronDown, ChevronUp, Heart, Bell, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { chatLocal } from "@/lib/chat-local";
+import { Markdown } from "@/components/Markdown";
 
 const USE_LOCAL_AI = !!import.meta.env.VITE_ANTHROPIC_API_KEY;
 
@@ -401,8 +402,8 @@ function Chat() {
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border"}`}>
-              {m.content}
+            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground whitespace-pre-wrap" : "bg-card border"}`}>
+              {m.role === "user" ? m.content : <Markdown>{m.content}</Markdown>}
 
               {m.memorySuggestions && m.memorySuggestions.length > 0 && !m.memoryHandled && (
                 <MemorySaveBlock
