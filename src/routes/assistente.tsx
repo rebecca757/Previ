@@ -1,24 +1,27 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveProfile } from "@/contexts/ActiveProfile";
 import { AuthGate } from "@/components/AuthGate";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
-import { Mic, Send, ChevronDown, ChevronUp, Heart, Bell, FileText, X } from "lucide-react";
+import { Mic, Send, ChevronDown, ChevronUp, Heart, Bell, FileText, X, Plus, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { chatLocal } from "@/lib/chat-local";
 import { Markdown } from "@/components/Markdown";
+import { format } from "date-fns";
+import { it } from "date-fns/locale";
 
 const USE_LOCAL_AI = !!import.meta.env.VITE_ANTHROPIC_API_KEY;
 
 export const Route = createFileRoute("/assistente")({
   head: () => ({ meta: [{ title: "Assistente — Prevì" }] }),
-  validateSearch: (s: Record<string, unknown>): { doc?: string; ask?: string } => {
-    const out: { doc?: string; ask?: string } = {};
+  validateSearch: (s: Record<string, unknown>): { doc?: string; ask?: string; conv?: string } => {
+    const out: { doc?: string; ask?: string; conv?: string } = {};
     if (typeof s.doc === "string" && s.doc) out.doc = s.doc;
     if (typeof s.ask === "string" && s.ask) out.ask = s.ask;
+    if (typeof s.conv === "string" && s.conv) out.conv = s.conv;
     return out;
   },
   component: () => <AuthGate><AppShell><Chat /></AppShell></AuthGate>,
@@ -85,7 +88,7 @@ function normalizeDate(s?: string | null): string | null {
 function Chat() {
   const { user } = useAuth();
   const { activeId } = useActiveProfile();
-  const { doc: docId, ask } = Route.useSearch();
+  const { doc: docId, ask, conv } = Route.useSearch();
   const navigate = useNavigate();
   const uid = activeId || user?.id;
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -94,38 +97,61 @@ function Chat() {
   const [listening, setListening] = useState(false);
   const [discOpen, setDiscOpen] = useState(true);
   const [docContext, setDocContext] = useState<{ id: string; title: string; interpretation: string | null } | null>(null);
+  const [convId, setConvId] = useState<string | null>(conv ?? null);
+  const [conversations, setConversations] = useState<{ id: string; title: string; document_id: string | null; updated_at: string }[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const recRef = useRef<any>(null);
   const autoAskedRef = useRef(false);
 
-  // Load the document context when arriving from a referto (?doc=<id>).
-  useEffect(() => {
-    if (!docId) { setDocContext(null); return; }
-    supabase
-      .from("documents")
-      .select("id,title,ai_full_interpretation")
-      .eq("id", docId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setDocContext({ id: data.id, title: data.title, interpretation: (data as any).ai_full_interpretation ?? null });
-      });
-  }, [docId]);
+  // Recent conversations, for the "riapri" list.
+  const loadConversations = useCallback(async () => {
+    if (!uid) { setConversations([]); return; }
+    const { data } = await (supabase as any)
+      .from("conversations")
+      .select("id,title,document_id,updated_at")
+      .eq("user_id", uid)
+      .order("updated_at", { ascending: false })
+      .limit(20);
+    setConversations(data || []);
+  }, [uid]);
+  useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // Load the message thread: scoped to this document, or the general chat (document_id IS NULL).
+  // Open a saved conversation (?conv=<id>) → load its messages; otherwise start fresh.
   useEffect(() => {
     if (!uid) return;
-    let q = (supabase as any)
+    setConvId(conv ?? null);
+    if (!conv) { setMessages([]); return; }
+    (supabase as any)
       .from("chat_messages")
-      .select("*")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: false })
-      .limit(30);
-    q = docId ? q.eq("document_id", docId) : q.is("document_id", null);
-    q.then(({ data }: any) => {
-      const rows = (data || []).slice().reverse();
-      setMessages(rows.map((m: any) => ({ role: m.role, content: m.content, id: m.id })));
-    });
-  }, [uid, docId]);
+      .select("id,role,content,created_at")
+      .eq("conversation_id", conv)
+      .order("created_at", { ascending: true })
+      .limit(300)
+      .then(({ data }: any) => {
+        setMessages((data || []).map((m: any) => ({ role: m.role, content: m.content, id: m.id })));
+      });
+  }, [uid, conv]);
+
+  // Resolve the document context: from the open conversation, or from ?doc=<id>.
+  useEffect(() => {
+    if (!uid) { setDocContext(null); return; }
+    (async () => {
+      let documentId: string | null = null;
+      if (conv) {
+        const { data: c } = await (supabase as any).from("conversations").select("document_id").eq("id", conv).maybeSingle();
+        documentId = c?.document_id ?? null;
+      } else if (docId) {
+        documentId = docId;
+      }
+      if (!documentId) { setDocContext(null); return; }
+      const { data } = await supabase
+        .from("documents")
+        .select("id,title,ai_full_interpretation")
+        .eq("id", documentId)
+        .maybeSingle();
+      setDocContext(data ? { id: data.id, title: data.title, interpretation: (data as any).ai_full_interpretation ?? null } : null);
+    })();
+  }, [uid, conv, docId]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -149,11 +175,26 @@ function Chat() {
     setMessages((m) => [...m, newUser, { role: "assistant", content: "…" }]);
     setSending(true);
     try {
-      await (supabase as any).from("chat_messages").insert({ user_id: uid, role: "user", content, document_id: docId ?? null });
+      const isFirstTurn = messages.length === 0;
+      const linkedDocId = docContext?.id ?? docId ?? null;
+
+      // Create the conversation lazily on the first message so empty chats aren't stored.
+      let cid = convId;
+      if (!cid) {
+        const { data: created, error: convErr } = await (supabase as any)
+          .from("conversations")
+          .insert({ user_id: uid, title: content.slice(0, 80), document_id: linkedDocId })
+          .select("id")
+          .single();
+        if (convErr) throw convErr;
+        cid = created.id as string;
+        setConvId(cid);
+      }
+
+      await (supabase as any).from("chat_messages").insert({ user_id: uid, role: "user", content, conversation_id: cid, document_id: linkedDocId });
       // When a document context is active, inject its title + interpretation into the
       // FIRST turn so the AI knows what referto we're discussing — without storing that
       // bulky context as the visible message (we persist only the user's question).
-      const isFirstTurn = messages.length === 0;
       const history = [...messages, newUser].map((m) => ({ role: m.role, content: m.content }));
       if (docContext && isFirstTurn && history.length > 0) {
         const ctx = `[Contesto: il paziente fa riferimento al documento "${docContext.title}".` +
@@ -170,7 +211,9 @@ function Chat() {
         data = result.data;
       }
       const reply: string = data.reply;
-      await (supabase as any).from("chat_messages").insert({ user_id: uid, role: "assistant", content: reply, document_id: docId ?? null });
+      await (supabase as any).from("chat_messages").insert({ user_id: uid, role: "assistant", content: reply, conversation_id: cid, document_id: linkedDocId });
+      await (supabase as any).from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", cid);
+      loadConversations();
       setMessages((m) => {
         const copy = [...m];
         const sugg = (data as any).memory_suggestions ?? ((data as any).memory_suggestion ? [(data as any).memory_suggestion] : null);
@@ -356,6 +399,14 @@ function Chat() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-9rem)] md:h-[calc(100vh-5rem)]">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold">Assistente</h1>
+        <Button asChild size="sm" variant="outline">
+          <Link to="/assistente" search={{}}>
+            <Plus className="w-4 h-4 mr-1" /> Nuova
+          </Link>
+        </Button>
+      </div>
       {docContext && (
         <div className="mb-3 flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-sm">
           <FileText className="w-4 h-4 text-primary shrink-0" />
@@ -398,6 +449,27 @@ function Chat() {
                 </button>
               ))}
             </div>
+
+            {conversations.length > 0 && (
+              <div className="space-y-1.5 pt-2">
+                <div className="px-1 text-xs font-medium text-muted-foreground">Conversazioni recenti</div>
+                {conversations.map((c) => (
+                  <Link
+                    key={c.id}
+                    to="/assistente"
+                    search={{ conv: c.id }}
+                    className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <MessageSquare className="w-4 h-4 shrink-0 text-primary" />
+                    <span className="flex-1 truncate">{c.title}</span>
+                    {c.document_id && <FileText className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />}
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {format(new Date(c.updated_at), "d MMM", { locale: it })}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {messages.map((m, i) => (
