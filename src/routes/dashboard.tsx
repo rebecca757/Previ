@@ -6,7 +6,7 @@ import { useActiveProfile } from "@/contexts/ActiveProfile";
 import { AuthGate } from "@/components/AuthGate";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
-import { FileText, Bell, Plus, MessageCircle, FileDown, Pill } from "lucide-react";
+import { Bell, Plus, MessageCircle, FileDown, Pill } from "lucide-react";
 import { differenceInDays, format } from "date-fns";
 import { it } from "date-fns/locale";
 import { MonthlySummaryCard } from "@/components/MonthlySummaryCard";
@@ -26,7 +26,6 @@ function Dashboard() {
   const [docCount, setDocCount] = useState(0);
   const [lastBio, setLastBio] = useState<string | null>(null);
   const [reminders, setReminders] = useState<{ id: string; title: string; due_date: string | null }[]>([]);
-  const [recent, setRecent] = useState<{ id: string; title: string; doc_type: string; created_at: string }[]>([]);
   const [urgentCount, setUrgentCount] = useState(0);
   const [urgentDismissed, setUrgentDismissed] = useState(false);
   const [trashSoonCount, setTrashSoonCount] = useState(0);
@@ -50,14 +49,13 @@ function Dashboard() {
   useEffect(() => {
     if (!uid || !queryFilter) return;
     (async () => {
-      const [profileResult, { count }, { data: bio }, { data: rems }, { data: docs }, { count: urgent }] = await Promise.all([
+      const [profileResult, { count }, { data: bio }, { data: rems }, { count: urgent }] = await Promise.all([
         profileType === "new_managed"
           ? Promise.resolve({ data: null })
           : supabase.from("profiles").select("full_name").eq("id", uid).maybeSingle(),
         supabase.from("documents").select("*", { count: "exact", head: true }).eq(queryFilter.col as any, queryFilter.val).is("deleted_at", null),
         supabase.from("biometric_history").select("recorded_at").eq(queryFilter.col as any, queryFilter.val).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("reminders").select("id,title,due_date").eq(queryFilter.col as any, queryFilter.val).eq("enabled", true).order("due_date", { ascending: true }).limit(3),
-        supabase.from("documents").select("id,title,doc_type,created_at").eq(queryFilter.col as any, queryFilter.val).is("deleted_at", null).order("created_at", { ascending: false }).limit(5),
         supabase.from("reminders").select("*", { count: "exact", head: true }).eq(queryFilter.col as any, queryFilter.val).eq("enabled", true).eq("priority", "urgent"),
       ]);
       const displayName = profileType === "new_managed"
@@ -67,7 +65,6 @@ function Dashboard() {
       setDocCount(count || 0);
       setLastBio(bio?.recorded_at || null);
       setReminders(rems || []);
-      setRecent(docs || []);
       setUrgentCount(urgent || 0);
 
       // Count items in trash with ≤ 7 days remaining
@@ -200,44 +197,6 @@ function Dashboard() {
         <StatCard icon={Bell} label="Promemoria attivi" value={String(reminders.length)} />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <Card title="Attività recente">
-          {recent.length === 0 ? (
-            <Empty text="Nessuna attività ancora." />
-          ) : (
-            <ul className="space-y-2">
-              {recent.map((d) => (
-                <li key={d.id}>
-                  <Link to="/referto/$id" params={{ id: d.id }} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted">
-                    <FileText className="w-4 h-4 text-primary" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{d.title}</div>
-                      <div className="text-xs text-muted-foreground">{d.doc_type}</div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">{format(new Date(d.created_at), "d MMM", { locale: it })}</div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card title="Prossimi promemoria">
-          {reminders.length === 0 ? (
-            <Empty text="Nessun promemoria attivo." />
-          ) : (
-            <ul className="space-y-2">
-              {reminders.map((r) => (
-                <li key={r.id} className="flex items-center gap-3 p-2 rounded-lg">
-                  <Bell className="w-4 h-4 text-primary" />
-                  <div className="flex-1 text-sm">{r.title}</div>
-                  {r.due_date && <div className="text-xs text-muted-foreground">{format(new Date(r.due_date), "d MMM", { locale: it })}</div>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
 
       <Link
         to="/archivio"
@@ -261,17 +220,6 @@ function StatCard({ icon: Icon, label, value }: { icon: any; label: string; valu
       <div className="text-xl font-semibold mt-1">{value}</div>
     </div>
   );
-}
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-card border rounded-xl p-5">
-      <div className="font-semibold mb-3">{title}</div>
-      {children}
-    </div>
-  );
-}
-function Empty({ text }: { text: string }) {
-  return <div className="text-sm text-muted-foreground py-6 text-center">{text}</div>;
 }
 
 function MedicationsStatCard({
