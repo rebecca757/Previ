@@ -126,13 +126,14 @@ Il campo body_systems deve contenere da 1 a 4 organi/apparati/aree del corpo PER
       ? [{ type: "text", text: userPrompt }, fileBlock]
       : userPrompt;
 
-    // Strip the chat "OUTPUT FORMAT (OBBLIGATORIO)" section from the shared
-    // system prompt: it forces a JSON-only reply, which would suppress the
-    // prose interpretation we want here. (Note: original code missed this
-    // because it matched "OUTPUT FORMAT:" with a colon, which never occurs.)
-    const docSystem = system
-      .replace(/OUTPUT FORMAT[\s\S]*$/i, "")
-      .replace(/[\s═]+$/, ""); // drop the trailing decorative rule line
+    // The shared system prompt is built for the CHAT: beyond the patient-context
+    // preamble it mandates a JSON reply (reply / memory_suggestions / ...) across
+    // several sections. Keeping any of it makes the model emit JSON instead of
+    // the prose interpretation we want. Everything from the first "═══" divider
+    // onward is chat machinery, so keep only the context preamble before it, then
+    // ask explicitly for prose.
+    const context = system.split(/\n*═{3,}/)[0].trimEnd();
+    const docSystem = `${context}\n\nIL TUO COMPITO ORA: interpretare un documento sanitario. Rispondi in PROSA discorsiva in italiano (NON in JSON), seguendo le istruzioni nel messaggio dell'utente.`;
 
     const ai = await callClaude({
       system: docSystem,
