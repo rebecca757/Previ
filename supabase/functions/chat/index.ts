@@ -6,6 +6,63 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+type ParsedReply = {
+  reply: string;
+  memory_suggestions: any[] | null;
+  prevention_suggestion: any;
+  reminder_action: any;
+  memory_delete: any;
+};
+
+// The model is asked to answer with a JSON object { reply, ... }, but it may
+// wrap it in a ```json fence or surround it with prose. Parse defensively so
+// the user never sees raw JSON: try the string as-is, then a fenced block,
+// then the first {...} span; if none parse into an object with a string
+// `reply`, treat the whole text as a plain-text answer.
+function parseModelReply(raw: string): ParsedReply {
+  const text = (raw || "").trim();
+  const plain: ParsedReply = {
+    reply: text,
+    memory_suggestions: null,
+    prevention_suggestion: null,
+    reminder_action: null,
+    memory_delete: null,
+  };
+  if (!text) return plain;
+
+  const candidates: string[] = [text];
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fence) candidates.push(fence[1].trim());
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first !== -1 && last > first) candidates.push(text.slice(first, last + 1));
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && typeof parsed.reply === "string") {
+        let memorySuggestions: any[] | null = null;
+        if (Array.isArray(parsed.memory_suggestions)) {
+          memorySuggestions = parsed.memory_suggestions.filter(Boolean);
+          if (memorySuggestions.length === 0) memorySuggestions = null;
+        } else if (parsed.memory_suggestion) {
+          memorySuggestions = [parsed.memory_suggestion];
+        }
+        return {
+          reply: parsed.reply,
+          memory_suggestions: memorySuggestions,
+          prevention_suggestion: parsed.prevention_suggestion || null,
+          reminder_action: parsed.reminder_action || null,
+          memory_delete: parsed.memory_delete || null,
+        };
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  return plain;
+}
+
 const TOOLS = [
   {
     name: "deactivate_reminder",
@@ -139,13 +196,9 @@ Deno.serve(async (req) => {
         const secondJson = await secondRes.json();
         const textBlock = (secondJson.content || []).find((b: any) => b.type === "text");
         if (textBlock?.text) {
-          // Claude might still output JSON — try to extract reply field
-          try {
-            const parsed = JSON.parse(textBlock.text);
-            if (parsed.reply) reply = parsed.reply;
-          } catch {
-            reply = textBlock.text;
-          }
+          // Claude might still wrap the confirmation in JSON — extract it cleanly.
+          const parsedReply = parseModelReply(textBlock.text).reply;
+          if (parsedReply) reply = parsedReply;
         }
       }
 
@@ -158,26 +211,11 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // No tool used — parse the JSON response as before
-    const raw = (firstJson.content || []).find((b: any) => b.type === "text")?.text || "{}";
-    let parsed: any = { reply: raw };
-    try { parsed = JSON.parse(raw); } catch { /* fall back to raw text */ }
+    // No tool used — extract the reply defensively (handles fenced/raw JSON or plain prose)
+    const raw = (firstJson.content || []).find((b: any) => b.type === "text")?.text || "";
+    const result = parseModelReply(raw);
 
-    let memorySuggestions: any[] | null = null;
-    if (Array.isArray(parsed.memory_suggestions)) {
-      memorySuggestions = parsed.memory_suggestions.filter(Boolean);
-      if (memorySuggestions.length === 0) memorySuggestions = null;
-    } else if (parsed.memory_suggestion) {
-      memorySuggestions = [parsed.memory_suggestion];
-    }
-
-    return new Response(JSON.stringify({
-      reply: parsed.reply || raw,
-      memory_suggestions: memorySuggestions,
-      prevention_suggestion: parsed.prevention_suggestion || null,
-      reminder_action: parsed.reminder_action || null,
-      memory_delete: parsed.memory_delete || null,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
