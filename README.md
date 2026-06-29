@@ -1,36 +1,36 @@
 # Prevì – AI Personal Health Assistant 🚀
 
-**Prevì** is an AI-powered personal health assistant focused on proactive prevention. It aggregates medical history, genetic predispositions, and family data into a single, secure platform to deliver a personalized screening calendar aligned with official US healthcare guidelines.
+**Prevì** is an AI-powered personal health assistant designed to shift healthcare from reactive treatment to proactive prevention. It seamlessly aggregates scattered medical histories, clinical documents, and family health data into a single, secure platform, delivering an automated, personalized screening calendar aligned with official US healthcare guidelines.
+
+🔗 **Live MVP:** [previ-app.vercel.app](https://previ-app.vercel.app)
 
 ---
 
-## 💡 Key Features
+## 💡 Core Features & Value Propositions
 
-* **Smart Aggregation:** Upload and organize clinical documents, test results, and personal health notes.
-* **Proactive Prevention:** Maps family medical history to generate a tailored, age-and-gender-specific preventative screening calendar.
-* **AI Medical Clarifier:** An intuitive, non-diagnostic AI chat that translates complex medical reports into plain language and guides users to the right specialist.
-* **Family Ecosystem:** Built for caregivers. Manage multiple profiles (children, elderly relatives) from a single account and automatically generate body-section PDF summaries for doctor visits.
+### 📑 Intelligent Document Aggregation & OCR Parsing
+* **From Paper to Insights:** Users can upload PDFs or photos of medical reports and blood tests. The system automatically extracts, structures, and interprets the data inline.
+* **Continuous Clinical Memory:** Unlike generic chatbots that forget context after a session, Prevì maintains a persistent, chronological timeline of the user's health evolution and undocumented personal health notes.
 
----
+### 🧬 Hereditary Risk Mapping & Predictive Screening
+* **Next-Gen Anamnesis:** Prevì doesn't just look at age and gender. By cross-referencing user data with family medical history (e.g., parental chronic conditions), it maps genetic predispositions.
+* **Dynamic Calendar:** Automatically generates a tailored preventative screening and vaccination calendar aligned with US institutional guidelines, prompting users to book appointments before symptoms arise.
 
-## 🌐 Try the MVP
+### 💬 AI Medical Clarifier & Specialist Routing
+* **Clear Language Translation:** An intuitive, non-diagnostic AI chat translates complex medical jargon into clear, actionable explanations, answering users' doubts in real-time.
+* **Smart Triaging:** Based on symptom tracking and report results, the AI guides users toward the correct medical specialist, reducing unnecessary visits and anxiety.
 
-The platform is live and ready for testing. 
-
-* **Live Link:** `[INSERT YOUR MVP WEBSITE URL HERE]`
-* **GitHub Repository:** `[INSERT YOUR REPO URL HERE]`
-
-🔒 **Exclusive Access for The Liquid Factory Team:**
-To create an account and test the full family dashboard, use the exclusive invite code:  
-`TLF2026`
+### 👥 Unified Family Dashboard (Built for Caregivers)
+* **Multi-Profile Management:** A single master account can manage distinct profiles for children, spouses, and elderly relatives. 
+* **Targeted Exports:** Generates localized, body-section PDF summaries (e.g., "Cardiovascular History Report") that aggregate all relevant documents automatically, ready to be handed to a doctor during a specialized visit.
 
 ---
 
 ## 🛠️ Tech Stack & Architecture
 
-* **Frontend & Backend:** Built and deployed using a modern full-stack architecture optimized for rapid product execution.
-* **AI Core:** Leverages advanced Large Language Models (LLMs) specialized in semantic analysis, continuous clinical memory tracking, and structured data parsing.
-* **Development Workflow:** Developed, iterated, and deployed from scratch utilizing Claude Code.
+* **Frontend & Hosting:** React/Next.js deployed on **Vercel** for ultra-fast loading times and responsive UI.
+* **AI Core:** Built with advanced Large Language Models (LLMs) optimized for semantic parsing, medical terminology processing, and continuous session memory.
+* **Development Paradigm:** Developed and rapidly iterated from scratch utilizing **Claude Code** for clean, production-ready code execution.
 
 ---
 
