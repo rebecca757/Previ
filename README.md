@@ -1,4 +1,4 @@
-# Prevì – AI Personal Health Assistant 🚀
+# Prevì – AI Personal Health Assistant 🩺
 
 **Prevì** is an AI-powered personal health assistant designed to shift healthcare from reactive treatment to proactive prevention. It seamlessly aggregates scattered medical histories, clinical documents, and family health data into a single, secure platform, delivering an automated, personalized screening calendar aligned with official US healthcare guidelines.
 
