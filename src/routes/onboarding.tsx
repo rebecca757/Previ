@@ -9,7 +9,6 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/onboarding")({
   head: () => ({ meta: [{ title: "Configura il tuo profilo — Prevì" }] }),
@@ -19,7 +18,6 @@ export const Route = createFileRoute("/onboarding")({
 function Onboarding() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const t = useT();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
@@ -63,10 +61,10 @@ function Onboarding() {
           height_cm: height ? parseFloat(height) : null,
         });
       }
-      toast.success(t("onboarding.created"));
+      toast.success("Profilo creato!");
       navigate({ to: "/dashboard" });
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t("common.error"));
+      toast.error(e instanceof Error ? e.message : "Errore");
     } finally {
       setSaving(false);
     }
@@ -78,90 +76,90 @@ function Onboarding() {
       <div className="max-w-xl mx-auto">
         <div className="mb-6">
           <Progress value={(step / 3) * 100} />
-          <div className="text-xs text-muted-foreground mt-2">{t("onboarding.stepOf", { n: step })}</div>
+          <div className="text-xs text-muted-foreground mt-2">Step {step} di 3</div>
         </div>
 
         <div className="bg-card rounded-2xl border p-6 md:p-8">
           {step === 1 && (
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold">{t("onboarding.s1Title")}</h2>
-              <p className="text-sm text-muted-foreground">{t("onboarding.s1Sub")}</p>
+              <h2 className="text-2xl font-bold">Dati anagrafici</h2>
+              <p className="text-sm text-muted-foreground">Iniziamo dalle basi.</p>
               <div>
-                <Label>{t("onboarding.fullName")}</Label>
+                <Label>Nome e cognome *</Label>
                 <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
               </div>
               <div>
-                <Label>{t("onboarding.dob")}</Label>
+                <Label>Data di nascita *</Label>
                 <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
               </div>
               <div>
-                <Label>{t("onboarding.sex")}</Label>
+                <Label>Sesso biologico</Label>
                 <Select value={sex} onValueChange={setSex}>
-                  <SelectTrigger><SelectValue placeholder={t("onboarding.select")} /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Seleziona" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="M">{t("onboarding.sexM")}</SelectItem>
-                    <SelectItem value="F">{t("onboarding.sexF")}</SelectItem>
-                    <SelectItem value="NS">{t("onboarding.sexNS")}</SelectItem>
+                    <SelectItem value="M">Maschile</SelectItem>
+                    <SelectItem value="F">Femminile</SelectItem>
+                    <SelectItem value="NS">Preferisco non specificare</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>{t("onboarding.bloodType")}</Label>
+                <Label>Gruppo sanguigno</Label>
                 <Select value={bloodType} onValueChange={setBloodType}>
-                  <SelectTrigger><SelectValue placeholder={t("onboarding.selectOptional")} /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Seleziona (opzionale)" /></SelectTrigger>
                   <SelectContent>
-                    {["A+","A-","B+","B-","AB+","AB-","0+","0-"].map(bt => <SelectItem key={bt} value={bt}>{bt}</SelectItem>)}
+                    {["A+","A-","B+","B-","AB+","AB-","0+","0-"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              <Button className="w-full" disabled={!canNext1} onClick={() => setStep(2)}>{t("onboarding.continue")}</Button>
+              <Button className="w-full" disabled={!canNext1} onClick={() => setStep(2)}>Continua</Button>
             </div>
           )}
 
           {step === 2 && (
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold">{t("onboarding.s2Title")}</h2>
-              <p className="text-sm text-muted-foreground">{t("onboarding.s2Sub")}</p>
+              <h2 className="text-2xl font-bold">Condizioni di salute</h2>
+              <p className="text-sm text-muted-foreground">Separati da virgola. Tutti i campi sono opzionali.</p>
               <div>
-                <Label>{t("onboarding.allergies")}</Label>
-                <Textarea placeholder={t("onboarding.allergiesPh")} value={allergies} onChange={(e) => setAllergies(e.target.value)} />
+                <Label>Allergie note</Label>
+                <Textarea placeholder="penicillina, lattosio…" value={allergies} onChange={(e) => setAllergies(e.target.value)} />
               </div>
               <div>
-                <Label>{t("onboarding.conditions")}</Label>
-                <Textarea placeholder={t("onboarding.conditionsPh")} value={conditions} onChange={(e) => setConditions(e.target.value)} />
+                <Label>Condizioni croniche</Label>
+                <Textarea placeholder="ipertensione, diabete tipo 2…" value={conditions} onChange={(e) => setConditions(e.target.value)} />
               </div>
               <div>
-                <Label>{t("onboarding.meds")}</Label>
-                <Textarea placeholder={t("onboarding.medsPh")} value={medications} onChange={(e) => setMedications(e.target.value)} />
+                <Label>Farmaci assunti regolarmente</Label>
+                <Textarea placeholder="es. ramipril 5mg…" value={medications} onChange={(e) => setMedications(e.target.value)} />
               </div>
               <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => setStep(1)}>{t("onboarding.back")}</Button>
-                <Button className="flex-1" onClick={() => setStep(3)}>{t("onboarding.continue")}</Button>
+                <Button variant="ghost" onClick={() => setStep(1)}>Indietro</Button>
+                <Button className="flex-1" onClick={() => setStep(3)}>Continua</Button>
               </div>
             </div>
           )}
 
           {step === 3 && (
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold">{t("onboarding.s3Title")}</h2>
-              <p className="text-sm text-muted-foreground">{t("onboarding.s3Sub")}</p>
+              <h2 className="text-2xl font-bold">Dati biometrici iniziali</h2>
+              <p className="text-sm text-muted-foreground">Potrai aggiornarli ogni mese dal Profilo.</p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>{t("onboarding.weight")}</Label>
+                  <Label>Peso (kg)</Label>
                   <Input type="number" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} />
                 </div>
                 <div>
-                  <Label>{t("onboarding.height")}</Label>
+                  <Label>Altezza (cm)</Label>
                   <Input type="number" step="0.1" value={height} onChange={(e) => setHeight(e.target.value)} />
                 </div>
               </div>
               <div className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
-                {t("onboarding.readyNote")}
+                Perfetto! Il tuo profilo è pronto. Puoi aggiornare questi dati ogni mese dalla sezione Profilo.
               </div>
               <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => setStep(2)}>{t("onboarding.back")}</Button>
+                <Button variant="ghost" onClick={() => setStep(2)}>Indietro</Button>
                 <Button className="flex-1" onClick={finish} disabled={saving}>
-                  {saving ? t("onboarding.saving") : t("onboarding.complete")}
+                  {saving ? "Salvataggio…" : "Completa"}
                 </Button>
               </div>
             </div>
