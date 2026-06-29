@@ -34,10 +34,10 @@
 
 ---
 
-## 👥 The Founders
+## 🤝🏻 The Founders
 
-* **Rebecca** – Management Engineer | Product & Execution
-* **Alessandro** – Management Engineer | Growth & Operations
+* 👩🏻‍🎓 **Rebecca** – Management Engineer | Product & Execution
+* 👨🏻‍🎓 **Alessandro** – Management Engineer | Growth & Operations
 
 ---
 *Disclaimer: Prevì is a non-diagnostic, decision-support tool designed for preventative organization. It does not provide official medical advice or replace professional healthcare consultation.*
