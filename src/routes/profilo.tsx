@@ -17,6 +17,7 @@ import { ConditionsManager } from "@/components/ConditionsManager";
 import { FamilyHistoryManager } from "@/components/FamilyHistoryManager";
 import { MedicationsManager } from "@/components/MedicationsManager";
 import { Trash2, Users, Check, Plus, X } from "lucide-react";
+import { useT, LanguageSwitcher } from "@/lib/i18n";
 
 export const Route = createFileRoute("/profilo")({
   head: () => ({ meta: [{ title: "Profilo — Prevì" }] }),
@@ -32,6 +33,7 @@ export const Route = createFileRoute("/profilo")({
 function Profile() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const t = useT();
   const [p, setP] = useState<any>(null);
   const [bio, setBio] = useState<any[]>([]);
   const [weight, setWeight] = useState("");
@@ -76,7 +78,7 @@ function Profile() {
     };
     await supabase.from("profiles").update(update).eq("id", user!.id);
     setSaving(false);
-    toast.success("Profilo aggiornato");
+    toast.success(t("profile.updated"));
     load();
   }
 
@@ -87,7 +89,7 @@ function Profile() {
       weight_kg: weight ? parseFloat(weight) : null,
       height_cm: height ? parseFloat(height) : null,
     });
-    toast.success("Dati aggiornati");
+    toast.success(t("profile.dataUpdated"));
     load();
   }
 
@@ -96,7 +98,7 @@ function Profile() {
     navigate({ to: "/" });
   }
 
-  if (!p) return <div className="text-muted-foreground">Caricamento…</div>;
+  if (!p) return <div className="text-muted-foreground">{t("common.loading")}</div>;
 
   const lastBio = bio[bio.length - 1];
   const daysSince = lastBio ? differenceInDays(new Date(), new Date(lastBio.recorded_at)) : null;
@@ -109,30 +111,30 @@ function Profile() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold">Profilo</h1>
+      <h1 className="text-3xl font-bold">{t("profile.title")}</h1>
 
-      <Section title="Dati stabili">
+      <Section title={t("profile.secStable")}>
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <Label>Nome e cognome</Label>
+            <Label>{t("profile.fullName")}</Label>
             <Input
               value={p.full_name || ""}
               onChange={(e) => setP({ ...p, full_name: e.target.value })}
             />
           </div>
           <div>
-            <Label>Data di nascita</Label>
+            <Label>{t("profile.dob")}</Label>
             <Input type="date" value={p.date_of_birth || ""} disabled />
           </div>
           <div>
-            <Label>Sesso biologico</Label>
+            <Label>{t("profile.sex")}</Label>
             <Input
               value={p.biological_sex || ""}
               onChange={(e) => setP({ ...p, biological_sex: e.target.value })}
             />
           </div>
           <div>
-            <Label>Gruppo sanguigno</Label>
+            <Label>{t("profile.bloodType")}</Label>
             <Input
               value={p.blood_type || ""}
               onChange={(e) => setP({ ...p, blood_type: e.target.value })}
@@ -140,45 +142,46 @@ function Profile() {
           </div>
         </div>
         <div>
-          <Label>Allergie (separate da virgola)</Label>
+          <Label>{t("profile.allergiesComma")}</Label>
           <Textarea
             value={(p.allergies || []).join(", ")}
             onChange={(e) =>
-              setP({ ...p, allergies: e.target.value.split(",").map((t: string) => t.trim()) })
+              setP({ ...p, allergies: e.target.value.split(",").map((s: string) => s.trim()) })
             }
           />
         </div>
         <Button onClick={saveStable} disabled={saving}>
-          {saving ? "Salvataggio…" : "Salva modifiche"}
+          {saving ? t("profile.saving") : t("profile.saveChanges")}
         </Button>
       </Section>
 
-      <Section title="Farmaci regolari">
+      <Section title={t("profile.secMeds")}>
         <MedicationsManager />
       </Section>
 
-      <Section title="Condizioni croniche">
+      <Section title={t("profile.secConditions")}>
         <ConditionsManager />
       </Section>
 
-      <Section title="Anamnesi Familiare">
+      <Section title={t("profile.secFamily")}>
         <FamilyHistoryManager />
       </Section>
 
-      <Section title="Account collegati">
+      <Section title={t("profile.secLinked")}>
         <LinkedAccountsManager />
       </Section>
 
-      <Section title="Aggiornamento mensile">
+      <Section title={t("profile.secMonthly")}>
         {daysSince !== null && daysSince >= 30 && (
           <div className="rounded-lg bg-warning/10 border border-warning/40 p-3 text-sm">
-            Ultimo aggiornamento:{" "}
-            {format(new Date(lastBio.recorded_at), "d MMMM yyyy", { locale: it })}. Vuoi aggiornare?
+            {t("profile.lastUpdate", {
+              date: format(new Date(lastBio.recorded_at), "d MMMM yyyy", { locale: it }),
+            })}
           </div>
         )}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label>Peso (kg)</Label>
+            <Label>{t("profile.weight")}</Label>
             <Input
               type="number"
               step="0.1"
@@ -187,7 +190,7 @@ function Profile() {
             />
           </div>
           <div>
-            <Label>Altezza (cm)</Label>
+            <Label>{t("profile.height")}</Label>
             <Input
               type="number"
               step="0.1"
@@ -196,7 +199,7 @@ function Profile() {
             />
           </div>
         </div>
-        <Button onClick={saveBio}>Aggiorna dati</Button>
+        <Button onClick={saveBio}>{t("profile.updateData")}</Button>
 
         {chartData.length > 1 && (
           <div className="h-56 mt-4">
@@ -218,13 +221,17 @@ function Profile() {
         )}
       </Section>
 
-      <Section title="Impostazioni">
-        <p className="text-sm text-muted-foreground">
-          I tuoi dati sono protetti e accessibili solo a te. Prevì usa l'AI per aiutarti a
-          comprendere — non sostituisce mai un medico.
-        </p>
+      <Section title={t("profile.secSettings")}>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <Label>{t("profile.languageLabel")}</Label>
+            <p className="text-sm text-muted-foreground mt-1">{t("profile.languageNote")}</p>
+          </div>
+          <LanguageSwitcher />
+        </div>
+        <p className="text-sm text-muted-foreground">{t("profile.settingsNote")}</p>
         <Button variant="outline" onClick={logout}>
-          Esci
+          {t("common.logout")}
         </Button>
       </Section>
     </div>
@@ -244,6 +251,7 @@ type AccountLink = {
 function LinkedAccountsManager() {
   const { user } = useAuth();
   const { refresh } = useActiveProfile();
+  const t = useT();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [links, setLinks] = useState<AccountLink[]>([]);
@@ -285,11 +293,11 @@ function LinkedAccountsManager() {
         return;
       }
       if (!targetId) {
-        toast.error("Nessun utente registrato con questa email.");
+        toast.error(t("profile.linked.noUser"));
         return;
       }
       if (targetId === user.id) {
-        toast.error("Non puoi collegare il tuo stesso account.");
+        toast.error(t("profile.linked.selfLink"));
         return;
       }
 
@@ -298,13 +306,13 @@ function LinkedAccountsManager() {
         .insert({ owner_id: user.id, linked_user_id: targetId, status: "pending" });
       if (insErr) {
         if (insErr.code === "23505")
-          toast.error("Hai già una richiesta o un collegamento con questo utente.");
+          toast.error(t("profile.linked.already"));
         else if (insErr.code === "42P01")
           toast.error("Tabella account_links non trovata. Applica lo script SQL su Supabase.");
-        else toast.error(`Errore: ${insErr.message}`);
+        else toast.error(`${t("common.error")}: ${insErr.message}`);
         return;
       }
-      toast.success("Richiesta inviata. L'altro utente deve accettarla.");
+      toast.success(t("profile.linked.requestSent"));
       setEmail("");
       load();
     } finally {
@@ -318,10 +326,10 @@ function LinkedAccountsManager() {
       .update({ status: "accepted" })
       .eq("id", link.link_id);
     if (error) {
-      toast.error(`Errore: ${error.message}`);
+      toast.error(`${t("common.error")}: ${error.message}`);
       return;
     }
-    toast.success("Richiesta accettata.");
+    toast.success(t("profile.linked.accepted"));
     await load();
     refresh();
   }
@@ -330,7 +338,7 @@ function LinkedAccountsManager() {
     if (!confirm(confirmMsg)) return;
     const { error } = await (supabase as any).from("account_links").delete().eq("id", link.link_id);
     if (error) {
-      toast.error(`Errore: ${error.message}`);
+      toast.error(`${t("common.error")}: ${error.message}`);
       return;
     }
     await load();
@@ -341,20 +349,17 @@ function LinkedAccountsManager() {
   const outgoing = links.filter((l) => l.direction === "outgoing");
 
   function label(l: AccountLink) {
-    return l.counterpart_name || l.counterpart_email || "Utente";
+    return l.counterpart_name || l.counterpart_email || t("profile.linked.user");
   }
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Inserisci l'email di un altro utente Prevì già registrato per richiedere l'accesso al suo
-        account. Quando accetterà, potrai passare al suo profilo dal selettore in alto.
-      </p>
+      <p className="text-sm text-muted-foreground">{t("profile.linked.intro")}</p>
 
       <div className="flex flex-col sm:flex-row gap-2">
         <Input
           type="email"
-          placeholder="email@esempio.it"
+          placeholder={t("profile.linked.emailPh")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => {
@@ -362,27 +367,27 @@ function LinkedAccountsManager() {
           }}
         />
         <Button onClick={sendRequest} disabled={busy || !email.trim()} className="shrink-0">
-          <Plus className="w-4 h-4 mr-1" /> Collega
+          <Plus className="w-4 h-4 mr-1" /> {t("profile.linked.link")}
         </Button>
       </div>
 
       {incoming.length > 0 && (
         <div className="space-y-2">
-          <Label className="text-base">Richieste ricevute</Label>
+          <Label className="text-base">{t("profile.linked.incoming")}</Label>
           {incoming.map((l) => (
             <div key={l.link_id} className="border rounded-xl p-3 bg-card flex items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm truncate">{label(l)}</div>
-                <div className="text-xs text-muted-foreground">vuole accedere al tuo account</div>
+                <div className="text-xs text-muted-foreground">{t("profile.linked.wantsAccess")}</div>
               </div>
               <div className="flex gap-1 shrink-0">
                 <Button size="sm" onClick={() => accept(l)}>
-                  <Check className="w-4 h-4 mr-1" /> Accetta
+                  <Check className="w-4 h-4 mr-1" /> {t("profile.linked.accept")}
                 </Button>
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => remove(l, "Rifiutare questa richiesta?")}
+                  onClick={() => remove(l, t("profile.linked.rejectConfirm"))}
                 >
                   <X className="w-4 h-4 text-destructive" />
                 </Button>
@@ -393,10 +398,10 @@ function LinkedAccountsManager() {
       )}
 
       <div className="space-y-2">
-        <Label className="text-base">Account a cui hai accesso</Label>
+        <Label className="text-base">{t("profile.linked.accessible")}</Label>
         {outgoing.length === 0 ? (
           <div className="text-sm text-muted-foreground border border-dashed rounded-lg p-4 text-center">
-            Nessun account collegato. Inserisci un'email qui sopra per inviare una richiesta.
+            {t("profile.linked.none")}
           </div>
         ) : (
           outgoing.map((l) => (
@@ -407,7 +412,7 @@ function LinkedAccountsManager() {
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm truncate">{label(l)}</div>
                 <div className="text-xs text-muted-foreground">
-                  {l.status === "accepted" ? "Collegato" : "In attesa di conferma"}
+                  {l.status === "accepted" ? t("profile.linked.linked") : t("profile.linked.pending")}
                 </div>
               </div>
               <Button
@@ -418,8 +423,8 @@ function LinkedAccountsManager() {
                   remove(
                     l,
                     l.status === "accepted"
-                      ? "Rimuovere questo collegamento?"
-                      : "Annullare la richiesta?",
+                      ? t("profile.linked.removeConfirm")
+                      : t("profile.linked.cancelConfirm"),
                   )
                 }
               >
