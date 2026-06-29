@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ActiveProfileProvider } from "@/contexts/ActiveProfile";
+import { LanguageProvider } from "@/lib/i18n";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -153,12 +154,14 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ActiveProfileProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-        {/* App-wide toast container — without this, every toast.success/error is invisible. */}
-        <Toaster position="top-center" richColors closeButton />
-      </ActiveProfileProvider>
+      <LanguageProvider>
+        <ActiveProfileProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+          {/* App-wide toast container — without this, every toast.success/error is invisible. */}
+          <Toaster position="top-center" richColors closeButton />
+        </ActiveProfileProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

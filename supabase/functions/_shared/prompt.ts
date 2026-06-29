@@ -42,6 +42,11 @@ export async function buildSystemPrompt(userId: string, supabaseUrl: string, ser
   const p: any = profile || {};
   const age = p.date_of_birth ? Math.floor((Date.now() - new Date(p.date_of_birth).getTime()) / (365.25 * 24 * 3600 * 1000)) : "n/d";
 
+  const lang = p.preferred_language === "en" ? "en" : "it";
+  const langDirective = lang === "en"
+    ? `LANGUAGE: Always write your replies to the user in ENGLISH. Stored data and uploaded documents may be in Italian or English — understand both, but every "reply" you produce must be written in English.`
+    : `LINGUA: Scrivi sempre le tue risposte all'utente in ITALIANO. I dati salvati e i documenti caricati possono essere in italiano o in inglese — comprendili entrambi, ma ogni "reply" che produci deve essere scritto in italiano.`;
+
   const docList = (docs || []).map((d: any) => `- [doc:${d.id}] ${d.title} (${d.doc_type}, ${d.document_date || "data n/d"})${d.ai_summary ? " — " + String(d.ai_summary).slice(0, 140) : ""}`).join("\n") || "Nessuno";
   const memList = (memories || []).map((m: any) => `- [mem:${m.id}] ${m.description} (${m.body_part || "—"}, ${m.event_date || "data n/d"})${m.linked_document_id ? " [documentato]" : " [non documentato]"}${m.notes ? " — " + m.notes : ""}`).join("\n") || "Nessuno";
   const remList = (reminders || []).map((r: any) => `- [rem:${r.id}] ${r.title}${r.suggested_specialty ? ` (${r.suggested_specialty})` : ""} [${r.status}, ${r.source}]`).join("\n") || "Nessuno";
@@ -89,7 +94,9 @@ export async function buildSystemPrompt(userId: string, supabaseUrl: string, ser
 
   const lastBio = (bio as any) || {};
 
-  return `Sei Prevì, un assistente sanitario personale digitale in italiano. Aiuti l'utente a comprendere documenti sanitari, organizzare la storia clinica e ricevere consigli di PREVENZIONE personalizzati. Non sei un medico: non diagnosticare e non prescrivere trattamenti. Linguaggio chiaro, empatico, accessibile.
+  return `Sei Prevì, un assistente sanitario personale digitale. Aiuti l'utente a comprendere documenti sanitari, organizzare la storia clinica e ricevere consigli di PREVENZIONE personalizzati. Non sei un medico: non diagnosticare e non prescrivere trattamenti. Linguaggio chiaro, empatico, accessibile.
+
+${langDirective}
 
 PROFILO UTENTE:
 - Nome: ${p.full_name || "n/d"}

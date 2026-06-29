@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { FolderHeart, Sparkles, ShieldCheck } from "lucide-react";
+import { useT, LanguageSwitcher } from "@/lib/i18n";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/")({
 
 function Welcome() {
   const navigate = useNavigate();
+  const t = useT();
   useEffect(() => {
     // Show the landing page by default. Only forward visitors who are both
     // logged in AND already onboarded straight to their dashboard; everyone
@@ -39,31 +41,31 @@ function Welcome() {
         <div className="flex items-center gap-2 mb-12">
           <div className="w-10 h-10 rounded-xl bg-primary grid place-items-center text-primary-foreground font-bold">P</div>
           <span className="font-semibold text-xl">Prevì</span>
+          <LanguageSwitcher className="ml-auto" />
         </div>
 
         <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-foreground">
-          Il tuo assistente <br />
-          <span className="text-primary">sanitario personale</span>
+          {t("landing.tagline1")} <br />
+          <span className="text-primary">{t("landing.tagline2")}</span>
         </h1>
         <p className="mt-6 text-lg text-muted-foreground max-w-xl">
-          Organizza la tua storia clinica, comprendi i tuoi referti con l'AI e ricevi
-          consigli di prevenzione personalizzati. Senza sostituire il tuo medico.
+          {t("landing.subtitle")}
         </p>
 
         <div className="mt-10 flex flex-wrap gap-3">
           <Button asChild size="lg" className="rounded-full px-8">
-            <Link to="/auth">Inizia ora</Link>
+            <Link to="/auth">{t("landing.ctaStart")}</Link>
           </Button>
           <Button asChild size="lg" variant="ghost" className="rounded-full">
-            <Link to="/auth">Ho già un account</Link>
+            <Link to="/auth">{t("landing.ctaHaveAccount")}</Link>
           </Button>
         </div>
 
         <div className="mt-20 grid md:grid-cols-3 gap-4">
           {[
-            { icon: FolderHeart, title: "Organizza", text: "Carica referti, esami e ricordi in un unico archivio sicuro." },
-            { icon: Sparkles, title: "Comprendi", text: "L'AI spiega i tuoi documenti in italiano semplice e chiaro." },
-            { icon: ShieldCheck, title: "Previeni", text: "Promemoria personalizzati per i tuoi controlli di prevenzione." },
+            { icon: FolderHeart, title: t("landing.f1Title"), text: t("landing.f1Text") },
+            { icon: Sparkles, title: t("landing.f2Title"), text: t("landing.f2Text") },
+            { icon: ShieldCheck, title: t("landing.f3Title"), text: t("landing.f3Text") },
           ].map((f) => (
             <div key={f.title} className="surface-soft rounded-2xl p-6 border">
               <f.icon className="w-6 h-6 text-primary mb-3" />

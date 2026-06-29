@@ -72,6 +72,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!doc) return jsonResponse({ error: "Not found" }, 404);
 
+    const { data: prof } = await admin
+      .from("profiles")
+      .select("preferred_language")
+      .eq("id", userData.user.id)
+      .maybeSingle();
+    const lang = (prof as any)?.preferred_language === "en" ? "en" : "it";
+
     let fileBlock: any = null;
     if (doc.file_path) {
       try {
@@ -105,7 +112,24 @@ Deno.serve(async (req) => {
     }
 
     const system = await buildSystemPrompt(userData.user.id, SUPABASE_URL, SERVICE);
-    const userPrompt = `Interpreta questo documento sanitario per la persona assistita.
+    const userPrompt = lang === "en"
+      ? `Interpret this health document for the patient.
+
+Document:
+- Title: ${doc.title || "Health document"}
+- Type: ${doc.doc_type || "unspecified"}
+- Facility: ${doc.facility_name || "unspecified"}
+- Document date: ${doc.document_date || doc.created_at || "unspecified"}
+
+The document may be written in Italian or English — understand it regardless. Write in clear, reassuring, readable English. Do not diagnose. Highlight what can be understood from the document, any important values or results, what could be useful to ask the doctor and when to see a professional.
+
+At the end add a markdown JSON block with this exact shape:
+\`\`\`json
+{"body_systems":["Salute generale"]}
+\`\`\`
+
+The body_systems field must contain 1 to 4 organs/systems/body areas RELEVANT to the document, chosen ONLY from this exact list: ${JSON.stringify(BODY_SYSTEMS)}.`
+      : `Interpreta questo documento sanitario per la persona assistita.
 
 Documento:
 - Titolo: ${doc.title || "Documento sanitario"}
@@ -113,7 +137,7 @@ Documento:
 - Struttura: ${doc.facility_name || "non specificata"}
 - Data documento: ${doc.document_date || doc.created_at || "non specificata"}
 
-Scrivi in italiano chiaro, rassicurante e leggibile. Non fare diagnosi. Evidenzia cosa si capisce dal documento, eventuali valori o risultati importanti, cosa potrebbe essere utile chiedere al medico e quando rivolgersi a un professionista.
+Il documento può essere scritto in italiano o in inglese — comprendilo in ogni caso. Scrivi in italiano chiaro, rassicurante e leggibile. Non fare diagnosi. Evidenzia cosa si capisce dal documento, eventuali valori o risultati importanti, cosa potrebbe essere utile chiedere al medico e quando rivolgersi a un professionista.
 
 Alla fine aggiungi un blocco JSON markdown con questa forma esatta:
 \`\`\`json
@@ -133,7 +157,9 @@ Il campo body_systems deve contenere da 1 a 4 organi/apparati/aree del corpo PER
     // onward is chat machinery, so keep only the context preamble before it, then
     // ask explicitly for prose.
     const context = system.split(/\n*═{3,}/)[0].trimEnd();
-    const docSystem = `${context}\n\nIL TUO COMPITO ORA: interpretare un documento sanitario. Rispondi in PROSA discorsiva in italiano (NON in JSON), seguendo le istruzioni nel messaggio dell'utente.`;
+    const docSystem = lang === "en"
+      ? `${context}\n\nYOUR TASK NOW: interpret a health document. The document may be in Italian or English — understand it either way, but reply in discursive PROSE in ENGLISH (NOT JSON), following the instructions in the user's message.`
+      : `${context}\n\nIL TUO COMPITO ORA: interpretare un documento sanitario. Il documento può essere in italiano o in inglese — comprendilo comunque, ma rispondi in PROSA discorsiva in ITALIANO (NON in JSON), seguendo le istruzioni nel messaggio dell'utente.`;
 
     const ai = await callClaude({
       system: docSystem,
