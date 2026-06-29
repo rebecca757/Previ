@@ -8,12 +8,9 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Mic, Send, ChevronDown, ChevronUp, Heart, Bell, FileText, X, Plus, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
-import { chatLocal } from "@/lib/chat-local";
 import { Markdown } from "@/components/Markdown";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
-
-const USE_LOCAL_AI = !!import.meta.env.VITE_ANTHROPIC_API_KEY;
 
 export const Route = createFileRoute("/assistente")({
   head: () => ({ meta: [{ title: "Assistente — Prevì" }] }),
@@ -202,14 +199,11 @@ function Chat() {
           `]\n\nDomanda: ${history[history.length - 1].content}`;
         history[history.length - 1] = { role: "user", content: ctx };
       }
-      let data: any;
-      if (USE_LOCAL_AI) {
-        data = await chatLocal(history, uid);
-      } else {
-        const result = await supabase.functions.invoke("chat", { body: { messages: history, active_user_id: uid } });
-        if (result.error) throw result.error;
-        data = result.data;
-      }
+      // Always route AI calls through the server-side Edge Function so the
+      // Anthropic API key stays on the server and is never shipped to the browser.
+      const result = await supabase.functions.invoke("chat", { body: { messages: history, active_user_id: uid } });
+      if (result.error) throw result.error;
+      const data: any = result.data;
       const reply: string = data.reply;
       await (supabase as any).from("chat_messages").insert({ user_id: uid, role: "assistant", content: reply, conversation_id: cid, document_id: linkedDocId });
       await (supabase as any).from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", cid);
