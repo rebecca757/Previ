@@ -32,14 +32,9 @@ export type OfficialScreening = {
   detail: ScreeningDetail;
 };
 
-export type FamilyTrigger = {
-  relation: string;
-  condition_label: string;
-  onset_age: number | null;
-};
-
 export type EligibleScreening = OfficialScreening & {
-  _family_trigger?: FamilyTrigger | null;
+  /** Human-readable label set when family history unlocked or anticipated this screening. */
+  familyTrigger?: string | null;
 };
 
 export const OFFICIAL_SCREENINGS: OfficialScreening[] = [
@@ -577,6 +572,26 @@ export const OFFICIAL_SCREENINGS: OfficialScreening[] = [
     },
   },
   {
+    id: "s006",
+    category: "Screening oncologico",
+    name: "TC torace a basso dosaggio — screening per familiarità",
+    description: "Tomografia computerizzata del torace a basse dosi di radiazioni per la diagnosi precoce del tumore al polmone.",
+    source: "AIOM / Programma RISP – Rete Italiana Screening Polmonare / USPSTF",
+    eligible_sex: ["M", "F"],
+    age_min: 50,
+    age_max: 74,
+    frequency_months: 12,
+    ssn_free: false,
+    family_history_required: true,
+    note: "Raccomandata nei soggetti ad alto rischio (familiarità per tumore al polmone, in particolare con storia di fumo) tra i 50 e i 74 anni, con cadenza annuale. Indicazione da valutare con lo specialista.",
+    detail: {
+      a_cosa_serve: "La TC torace a basso dosaggio individua noduli polmonari in fase iniziale, quando il tumore al polmone è ancora asintomatico e potenzialmente curabile. Negli studi sui soggetti ad alto rischio ha ridotto la mortalità per tumore polmonare del 20-24%.",
+      a_chi_e_utile: "Persone tra i 50 e i 74 anni ad alto rischio: familiarità per tumore al polmone, soprattutto se associata a storia di fumo attuale o pregressa. L'indicazione va sempre valutata con lo pneumologo o l'oncologo.",
+      fonte: "AIOM / Programma RISP – Rete Italiana Screening Polmonare",
+      fonte_url: "https://www.aiom.it",
+    },
+  },
+  {
     id: "sp_brca",
     category: "Consulenza genetica",
     name: "Consulenza genetica oncologica (BRCA)",
@@ -598,98 +613,161 @@ export const OFFICIAL_SCREENINGS: OfficialScreening[] = [
   },
 ];
 
-export type FamilyConditionEntry = {
-  condition: string;            // raw condition text
-  category: string | null;      // normalized category
-  onset_age: number | null;     // diagnosis age of the relative
-  relation: string;             // human-readable relation
-  relation_degree: "first" | "second" | null;
+export type FamilyHistoryInput = {
+  relation: string;                            // human-readable relation ("Madre", "Nonno paterno"…)
+  condition: string;                           // raw condition text
+  condition_category: string | null;           // normalized category (see normalizeCondition)
+  onset_age: number | null;                    // diagnosis age of the relative, if known
+  relation_degree: "first" | "second" | null;   // first = parent/sibling/child
 };
 
-export type ScreeningContext = {
-  age: number | null;
-  sex: "M" | "F" | null;
-  familyConditions: FamilyConditionEntry[];
-};
+/**
+ * SINGLE source of truth for prevention eligibility.
+ * Returns the official screenings applicable to the user's age/sex, plus any
+ * screenings unlocked or anticipated by family history. Family-triggered items
+ * carry a `familyTrigger` label and may appear before the user reaches the
+ * standard age — the UI shows them with an "a partire dai N anni" note.
+ */
+export function getEligibleScreenings(
+  userAge: number | null,
+  userSex: "M" | "F" | null,
+  familyHistory: FamilyHistoryInput[],
+): EligibleScreening[] {
+  if (userAge == null || !userSex) return [];
 
-export function eligibleScreenings(ctx: ScreeningContext): EligibleScreening[] {
-  if (ctx.age == null || !ctx.sex) return [];
-  const out = new Map<string, EligibleScreening>();
+  const results: EligibleScreening[] = OFFICIAL_SCREENINGS
+    .filter((s) => !s.family_history_required)
+    .filter((s) => s.eligible_sex.includes(userSex))
+    .filter((s) => userAge >= s.age_min && userAge <= s.age_max)
+    .map((s) => ({ ...s, familyTrigger: null }));
 
-  for (const s of OFFICIAL_SCREENINGS) {
-    if (!s.eligible_sex.includes(ctx.sex as "M" | "F")) continue;
-    if (s.family_history_required) continue;
-    if (ctx.age < s.age_min || ctx.age > s.age_max) continue;
-    out.set(s.id, { ...s, _family_trigger: null });
-  }
-
-  const addScreeningOverride = (
-    id: string,
-    ageMinOverride: number,
-    familyEntry: FamilyConditionEntry,
-    frequencyMonthsOverride?: number,
-  ) => {
-    const screening = OFFICIAL_SCREENINGS.find((s) => s.id === id);
-    if (!screening) return;
-    if (!screening.eligible_sex.includes(ctx.sex as "M" | "F")) return;
-    if (ctx.age! < ageMinOverride) return;
-
-    const trigger: FamilyTrigger = {
-      relation: familyEntry.relation,
-      condition_label: familyEntry.condition,
-      onset_age: familyEntry.onset_age,
-    };
-    const candidate: EligibleScreening = {
-      ...screening,
-      age_min: ageMinOverride,
-      frequency_months: frequencyMonthsOverride ?? screening.frequency_months,
-      _family_trigger: trigger,
-    };
-    const existing = out.get(id);
-    if (!existing || !existing._family_trigger || ageMinOverride < existing.age_min) {
-      out.set(id, candidate);
+  const addItem = (id: string, ageMin: number, entry: FamilyHistoryInput, frequencyOverride?: number) => {
+    const item = OFFICIAL_SCREENINGS.find((d) => d.id === id);
+    if (!item) return;
+    if (!item.eligible_sex.includes(userSex)) return;
+    const familyLabel = `${entry.relation} con ${entry.condition}${entry.onset_age ? ` (a ${entry.onset_age} anni)` : ""}`;
+    const existing = results.find((r) => r.id === id);
+    if (existing) {
+      existing.familyTrigger = familyLabel;
+      if (frequencyOverride) existing.frequency_months = frequencyOverride;
+    } else {
+      results.push({
+        ...item,
+        age_min: ageMin,
+        frequency_months: frequencyOverride ?? item.frequency_months,
+        familyTrigger: familyLabel,
+      });
     }
   };
 
-  ctx.familyConditions.forEach((entry) => {
-    const cat = entry.category;
-    const degree = entry.relation_degree;
-    const onsetAge = entry.onset_age;
+  familyHistory.forEach((entry) => {
+    const cat = entry.condition_category;
+    const isFirst = entry.relation_degree === "first";
+    const onsetAge = entry.onset_age; // null = unknown — handled per-condition below
+
+    // ── Cardiovascolare / metabolico ──
+    if (cat === "hypertension") {
+      addItem("r003", 18, entry, 6);
+    }
+
+    if (cat === "diabetes" && isFirst) {
+      addItem("c002", 30, entry);
+      addItem("sp008", 35, entry);
+    }
 
     if (cat === "cardiovascular_disease") {
-      const isEarly = degree === "first"
-        ? onsetAge != null && onsetAge < 55
-        : onsetAge != null && onsetAge <= 50;
-      if (isEarly) {
-        addScreeningOverride("c001", 25, entry);
-        addScreeningOverride("c004", 30, entry);
-        addScreeningOverride("sp006", 35, entry);
+      // First-degree (parent/sibling): trigger even when onset age is unknown.
+      // Second-degree (grandparent/uncle): only when onset was early (< 50).
+      const shouldTrigger = isFirst
+        ? (onsetAge == null || onsetAge < 55)
+        : (onsetAge != null && onsetAge < 50);
+      if (shouldTrigger) {
+        addItem("c001", 25, entry);
+        addItem("c004", 30, entry);
+        addItem("sp006", 35, entry);
       }
     }
 
-    if (cat === "diabetes" && degree === "first") {
-      addScreeningOverride("c002", 30, entry);
-      addScreeningOverride("sp008", 35, entry);
+    if (cat === "stroke") {
+      // Early stroke in the family raises cardiovascular risk: < 65 (1st) / < 60 (2nd).
+      const earlyThreshold = isFirst ? 65 : 60;
+      if (onsetAge != null && onsetAge < earlyThreshold) {
+        addItem("c001", 25, entry);
+        addItem("r003", 18, entry, 6);
+        addItem("sp006", 35, entry);
+      }
     }
 
-    if (cat === "hypertension") {
-      addScreeningOverride("r003", 18, entry, 6);
+    if (cat === "arrhythmia" && isFirst) {
+      addItem("c004", 30, entry);
+      addItem("sp006", 35, entry);
     }
 
+    if (cat === "hypercholesterolemia" && isFirst) {
+      // Possible familial hypercholesterolemia → early lipid profile.
+      addItem("c001", 20, entry);
+    }
+
+    // ── Oncologico ──
     if (cat === "colorectal_cancer") {
-      const startAge = onsetAge ? Math.max(30, onsetAge - 10) : 40;
-      addScreeningOverride("s004", startAge, entry);
-      addScreeningOverride("s005", startAge, entry);
+      if (isFirst) {
+        const startAge = onsetAge != null ? Math.max(30, onsetAge - 10) : 40;
+        addItem("s004", startAge, entry);
+        addItem("s005", startAge, entry);
+      } else {
+        addItem("s004", 50, entry);
+        if (onsetAge != null && onsetAge < 50) addItem("s005", 50, entry);
+      }
     }
 
-    if (cat === "breast_cancer" && degree === "first") {
-      const startAge = onsetAge ? Math.max(25, onsetAge - 10) : 40;
-      addScreeningOverride("s001", startAge, entry);
-      addScreeningOverride("sp009", 25, entry);
+    if (cat === "breast_cancer" && userSex === "F") {
+      const startAge = onsetAge != null
+        ? Math.max(25, onsetAge - 10)
+        : (isFirst ? 40 : 45);
+      addItem("s001", startAge, entry);
+      addItem("sp009", 25, entry);
+    }
+
+    if (cat === "ovarian_cancer" && userSex === "F") {
+      addItem("sp003", 18, entry);
+      addItem("sp_brca", 25, entry); // BRCA genetic counseling
+    }
+
+    if (cat === "endometrial_cancer" && userSex === "F" && isFirst) {
+      addItem("sp003", 18, entry);
+    }
+
+    if (cat === "prostate_cancer" && userSex === "M") {
+      // First-degree → anticipate PSA/urology to 40; second-degree → 45 (AIOM/SIU).
+      addItem("sp005", isFirst ? 40 : 45, entry);
+    }
+
+    if (cat === "pancreatic_cancer" && isFirst) {
+      addItem("c002", 35, entry); // glycemic surveillance (new-onset diabetes link)
+      addItem("r001", 30, entry);
+    }
+
+    if (cat === "lung_cancer") {
+      // Low-dose chest CT for high familial risk (most relevant with a smoking history).
+      addItem("s006", isFirst ? 50 : 55, entry);
+    }
+
+    if (cat === "melanoma") {
+      addItem("sp001", 18, entry);
+    }
+
+    // ── Neurologico / osseo ──
+    if (cat === "alzheimer" && isFirst) {
+      addItem("c003", 35, entry); // cardiovascular risk score (modifiable dementia risk)
+      addItem("c001", 30, entry);
+    }
+
+    if (cat === "osteoporosis" && userSex === "F" && isFirst) {
+      addItem("os001", 50, entry);
     }
   });
 
-  return Array.from(out.values());
+  return results;
 }
 
 /** Compute relation degree from a free-text relation label. */

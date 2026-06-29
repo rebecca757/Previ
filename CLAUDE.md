@@ -29,22 +29,23 @@ Prevì is an Italian health management web app for adults 25-50. It helps users:
 - `monthly_summaries` — AI-generated monthly health summaries
 
 ## AI features
-- Chat assistant (src/lib/chat-local.ts) — uses Claude API directly with tool use
+- Chat assistant — calls the `chat` Supabase Edge Function (supabase/functions/chat); the Anthropic key stays server-side (ANTHROPIC_API_KEY secret), never in the client bundle
 - Document interpretation — auto-analyzes uploaded PDFs
 - Health memory extraction — detects and saves health events from chat
 - Prevention filtering — matches official Italian screening guidelines to user profile
 
 ## Prevention system
-- Static dataset of official Italian screenings (LEA, PNPV, ISS, società scientifiche)
-- Filtered by age and sex from user profile
-- Family history overrides: conditions in family_history trigger earlier screenings
+- Static dataset of official Italian screenings (LEA, PNPV, ISS, società scientifiche) in src/lib/screenings.ts
+- `getEligibleScreenings(age, sex, familyHistory)` in screenings.ts is the SINGLE source of truth for eligibility: it filters by age/sex AND applies family-history overrides. prevenzione.tsx consumes it directly — do NOT reintroduce a parallel copy of this logic.
+- Family history overrides: a relative's condition can unlock a screening or anticipate its starting age (shown in the UI with an "a partire dai N anni" note and a purple family-trigger badge).
 - condition_category field maps free text to: cardiovascular_disease, stroke, arrhythmia, diabetes, hypertension, hypercholesterolemia, colorectal_cancer, breast_cancer, ovarian_cancer, endometrial_cancer, pancreatic_cancer, prostate_cancer, melanoma, lung_cancer, alzheimer, osteoporosis
-- relation_degree: 'first' (madre/padre/fratello/sorella) or 'second' (nonno/nonna/zio/zia)
-- sp_brca (Consulenza genetica oncologica BRCA) added to dataset — triggered by ovarian_cancer family history, family_history_required: true
-- normalizeCondition() in screenings.ts is the single source of truth; FamilyHistoryManager imports it directly
+- ALL of the above categories now drive at least one screening trigger in getEligibleScreenings (cardiovascular/diabetes require the documented degree/onset gating).
+- relation_degree: 'first' (madre/padre/fratello/sorella/figlio/figlia) or 'second' (nonno/nonna/zio/zia)
+- family_history_required screenings (only surface via family history): s005 colonoscopia, sp009 ecografia mammaria, s006 TC torace basso dosaggio (lung), sp_brca BRCA genetic counseling
+- normalizeCondition() / getRelationDegree() in screenings.ts are the single source of truth for classification; FamilyHistoryManager saves them on write and prevenzione.tsx recomputes them as a fallback for legacy rows
 
 ## Known bugs to fix
-- Family history filtering not working for diabetes and cardiovascular conditions
+- (none currently tracked)
 
 ## AI chat tools available
 - create_health_memory

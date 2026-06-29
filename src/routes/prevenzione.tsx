@@ -15,7 +15,7 @@ import { Plus, Bell, Trash2, ShieldCheck, ChevronDown, ChevronUp, Info, RefreshC
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { toast } from "sonner";
-import { OFFICIAL_SCREENINGS, frequencyLabel, normalizeCondition, getRelationDegree, type OfficialScreening } from "@/lib/screenings";
+import { OFFICIAL_SCREENINGS, getEligibleScreenings, frequencyLabel, normalizeCondition, getRelationDegree, type OfficialScreening } from "@/lib/screenings";
 
 export const Route = createFileRoute("/prevenzione")({
   head: () => ({ meta: [{ title: "Prevenzione — Prevì" }] }),
@@ -48,133 +48,6 @@ type FamilyHistoryRow = {
 type PreventionScreening = OfficialScreening & {
   familyTrigger?: string | null;
 };
-
-const PREVENTION_DATASET = OFFICIAL_SCREENINGS;
-
-function applyFamilyHistoryOverrides(baseScreenings: PreventionScreening[], familyHistory: FamilyHistoryRow[], userAge: number | null, userSex: "M" | "F" | null) {
-  const results = [...baseScreenings];
-  
-  const addItem = (id: string, ageMin: number, entry: FamilyHistoryRow, frequencyOverride?: number) => {
-    if (userAge == null) return;
-    const dataset = PREVENTION_DATASET;
-    const item = dataset.find(d => d.id === id);
-    if (!item) return;
-    
-    const existing = results.find(r => r.id === id);
-    const familyLabel = `${entry.relation} con ${entry.condition}${entry.onset_age ? ` (a ${entry.onset_age} anni)` : ''}`;
-    
-    if (existing) {
-      existing.familyTrigger = familyLabel;
-      if (frequencyOverride) existing.frequency_months = frequencyOverride;
-    } else {
-      results.push({
-        ...item,
-        age_min: ageMin,
-        frequency_months: frequencyOverride || item.frequency_months,
-        familyTrigger: familyLabel
-      });
-    }
-  };
-
-  familyHistory.forEach(entry => {
-    const cat = entry.condition_category;
-    const isFirst = entry.relation_degree === 'first';
-    const onsetAge = entry.onset_age; // null means unknown — handled per-condition below
-
-    if (cat === 'hypertension') {
-      addItem('r003', 18, entry, 6);
-    }
-
-    if (cat === 'diabetes' && isFirst) {
-      addItem('c002', 30, entry);
-      addItem('sp008', 35, entry);
-    }
-
-    if (cat === 'cardiovascular_disease') {
-      // First-degree (parent/sibling): trigger even without onset_age (unknown = assume relevant).
-      // Second-degree (grandparent/uncle): only trigger when onset was early (< 50).
-      const shouldTrigger = isFirst
-        ? (onsetAge == null || onsetAge < 55)
-        : (onsetAge != null && onsetAge < 50);
-      if (shouldTrigger) {
-        addItem('c001', 25, entry);
-        addItem('c004', 30, entry);
-        addItem('sp006', 35, entry);
-      }
-    }
-
-    if (cat === 'colorectal_cancer') {
-      if (isFirst) {
-        // First-degree: start 10 years before onset, minimum 30.
-        const startAge = onsetAge != null ? Math.max(30, onsetAge - 10) : 40;
-        addItem('s004', startAge, entry);
-        addItem('s005', startAge, entry);
-      } else {
-        // Second-degree: standard SOF age (50); colonoscopy only if onset was early (< 50).
-        addItem('s004', 50, entry);
-        if (onsetAge != null && onsetAge < 50) {
-          addItem('s005', 50, entry);
-        }
-      }
-    }
-
-    if (cat === 'breast_cancer' && userSex === 'F') {
-      // If onset_age unknown, use 40 for first-degree and 45 for second-degree.
-      const startAge = onsetAge != null
-        ? Math.max(25, onsetAge - 10)
-        : (isFirst ? 40 : 45);
-      addItem('s001', startAge, entry);
-      addItem('sp009', 25, entry);
-    }
-
-    if (cat === 'osteoporosis' && userSex === 'F' && isFirst) {
-      addItem('os001', 50, entry);
-    }
-
-    if (cat === 'ovarian_cancer' && userSex === 'F') {
-      addItem('sp003', 18, entry);
-      addItem('sp_brca', 25, entry);
-    }
-
-    if (cat === 'pancreatic_cancer' && isFirst) {
-      addItem('c002', 35, entry);
-      addItem('r001', 30, entry);
-    }
-
-    if (cat === 'endometrial_cancer' && userSex === 'F' && isFirst) {
-      addItem('sp003', 18, entry);
-    }
-
-    if (cat === 'melanoma') {
-      addItem('sp001', 18, entry);
-    }
-
-    if (cat === 'alzheimer' && isFirst) {
-      addItem('c003', 35, entry);
-      addItem('c001', 30, entry);
-    }
-
-    if (cat === 'hypercholesterolemia' && isFirst) {
-      addItem('c001', 20, entry);
-    }
-
-    if (cat === 'stroke') {
-      const earlyThreshold = isFirst ? 65 : 60;
-      if (onsetAge != null && onsetAge < earlyThreshold) {
-        addItem('c001', 25, entry);
-        addItem('r003', 18, entry, 6);
-        addItem('sp006', 35, entry);
-      }
-    }
-
-    if (cat === 'arrhythmia' && isFirst) {
-      addItem('c004', 30, entry);
-      addItem('sp006', 35, entry);
-    }
-  });
-
-  return results;
-}
 
 function FamilyTriggerBadge({ trigger }: { trigger: string }) {
   return (
@@ -362,27 +235,10 @@ function Prevention() {
       : null
   ), [profile?.biological_sex]);
 
-  const eligible = useMemo(() => {
-    const baseScreenings: PreventionScreening[] = userAge == null || !userSex
-      ? []
-      : OFFICIAL_SCREENINGS
-        .filter((s) => !s.family_history_required)
-        .filter((s) => s.eligible_sex.includes(userSex))
-        .filter((s) => userAge >= s.age_min && userAge <= s.age_max)
-        .map((s) => ({ ...s, familyTrigger: null }));
-
-    const finalScreenings = applyFamilyHistoryOverrides(
-      baseScreenings,
-      familyHistory,
-      userAge,
-      userSex,
-    );
-
-    console.log('Family history loaded:', familyHistory);
-    console.log('Family-triggered screenings:', finalScreenings.filter(s => s.familyTrigger));
-
-    return finalScreenings;
-  }, [familyHistory, userAge, userSex]);
+  const eligible = useMemo(
+    () => getEligibleScreenings(userAge, userSex, familyHistory) as PreventionScreening[],
+    [familyHistory, userAge, userSex],
+  );
   const eligibleIds = useMemo(() => new Set(eligible.map((s) => s.id)), [eligible]);
   const notEligible = useMemo(() => OFFICIAL_SCREENINGS.filter((s) => !eligibleIds.has(s.id)), [eligibleIds]);
 
