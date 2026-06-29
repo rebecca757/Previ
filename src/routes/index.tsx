@@ -19,8 +19,17 @@ export const Route = createFileRoute("/")({
 function Welcome() {
   const navigate = useNavigate();
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/dashboard" });
+    // Show the landing page by default. Only forward visitors who are both
+    // logged in AND already onboarded straight to their dashboard; everyone
+    // else (logged out, or mid-onboarding) stays on the landing page.
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarded")
+        .eq("id", data.session.user.id)
+        .maybeSingle();
+      if (profile?.onboarded) navigate({ to: "/dashboard" });
     });
   }, [navigate]);
 
