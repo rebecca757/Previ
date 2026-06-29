@@ -34,10 +34,12 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   function switchMode(next: "signin" | "signup") {
     setMode(next);
     setInviteCode("");
+    setConfirmationSent(false);
   }
 
   async function submit(e: React.FormEvent) {
@@ -61,19 +63,28 @@ function AuthPage() {
         }
 
         // Step 2: create auth user
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { emailRedirectTo: window.location.origin + "/dashboard" },
         });
         if (error) throw error;
 
-        // Step 3: increment invite code usage
+        // Step 3: consume the invite code now that the account exists
         await incrementInviteCodeUse(inviteCode);
 
-        // Step 4: proceed to onboarding
-        toast.success("Account creato! Ora completa il tuo profilo.");
-        navigate({ to: "/onboarding" });
+        // Step 4: gate onboarding behind email confirmation.
+        // With email confirmation enabled, signUp returns no session until the
+        // user clicks the link in the confirmation email — so we DON'T send them
+        // to onboarding yet. We only forward immediately if a session already
+        // exists (i.e. email confirmation is disabled on the project).
+        if (data.session) {
+          toast.success("Account creato! Ora completa il tuo profilo.");
+          navigate({ to: "/onboarding" });
+        } else {
+          toast.success("Account creato! Controlla la tua email per confermare.");
+          setConfirmationSent(true);
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -94,46 +105,65 @@ function AuthPage() {
           <div className="w-9 h-9 rounded-xl bg-primary grid place-items-center text-primary-foreground font-bold">P</div>
           <span className="font-semibold">Prevì</span>
         </Link>
-        <h1 className="text-2xl font-bold">{mode === "signup" ? "Crea il tuo account" : "Bentornato"}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {mode === "signup" ? "Bastano un'email e una password." : "Accedi al tuo assistente sanitario."}
-        </p>
-
-        <form onSubmit={submit} className="space-y-4 mt-6">
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        {confirmationSent ? (
+          <div className="mt-2">
+            <h1 className="text-2xl font-bold">Controlla la tua email</h1>
+            <p className="text-sm text-muted-foreground mt-3">
+              Abbiamo inviato un link di conferma a{" "}
+              <span className="font-medium text-foreground">{email}</span>. Clicca il link per
+              attivare l'account, poi accedi per completare il tuo profilo.
+            </p>
+            <p className="text-xs text-muted-foreground mt-3">
+              Non trovi l'email? Controlla nella cartella spam o attendi qualche minuto.
+            </p>
+            <Button className="w-full mt-6" onClick={() => switchMode("signin")}>
+              Vai all'accesso
+            </Button>
           </div>
-          <div>
-            <Label htmlFor="pw">Password</Label>
-            <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
-          </div>
-          {mode === "signup" && (
-            <div>
-              <Label htmlFor="invite">Codice invito</Label>
-              <Input
-                id="invite"
-                type="text"
-                required
-                placeholder="Inserisci il codice che hai ricevuto"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                autoComplete="off"
-                style={{ textTransform: "uppercase" }}
-              />
-            </div>
-          )}
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Attendi…" : mode === "signup" ? "Crea account" : "Accedi"}
-          </Button>
-        </form>
+        ) : (
+          <>
+            <h1 className="text-2xl font-bold">{mode === "signup" ? "Crea il tuo account" : "Bentornato"}</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {mode === "signup" ? "Bastano un'email e una password." : "Accedi al tuo assistente sanitario."}
+            </p>
 
-        <button
-          onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
-          className="mt-6 text-sm text-muted-foreground hover:text-foreground w-full text-center"
-        >
-          {mode === "signup" ? "Hai già un account? Accedi" : "Non hai un account? Registrati"}
-        </button>
+            <form onSubmit={submit} className="space-y-4 mt-6">
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="pw">Password</Label>
+                <Input id="pw" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+              </div>
+              {mode === "signup" && (
+                <div>
+                  <Label htmlFor="invite">Codice invito</Label>
+                  <Input
+                    id="invite"
+                    type="text"
+                    required
+                    placeholder="Inserisci il codice che hai ricevuto"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    autoComplete="off"
+                    style={{ textTransform: "uppercase" }}
+                  />
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Attendi…" : mode === "signup" ? "Crea account" : "Accedi"}
+              </Button>
+            </form>
+
+            <button
+              onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
+              className="mt-6 text-sm text-muted-foreground hover:text-foreground w-full text-center"
+            >
+              {mode === "signup" ? "Hai già un account? Accedi" : "Non hai un account? Registrati"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
