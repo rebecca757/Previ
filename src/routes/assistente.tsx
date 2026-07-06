@@ -82,6 +82,57 @@ function normalizeDate(s?: string | null): string | null {
   return null;
 }
 
+// Defense-in-depth so the user NEVER sees raw JSON. The chat Edge Function
+// already returns clean prose, but messages saved before that fix are stored in
+// the DB as raw JSON (e.g. `{"reply":"..."}` or a ```json fence), and a rare
+// model response could still slip through. Extract the "reply" text on the way
+// in — mirrors parseModelReply in supabase/functions/chat/index.ts (repair
+// in-string control chars, then regex-salvage the reply field).
+function cleanReply(raw: string): string {
+  const text = (raw || "").trim();
+  if (!text) return text;
+  // Fast path: nothing JSON-shaped, leave it untouched.
+  if (!text.startsWith("{") && !text.startsWith("```") && !text.includes('"reply"')) return text;
+
+  const repair = (s: string): string => {
+    let out = "", inStr = false, esc = false;
+    for (const ch of s) {
+      if (esc) { out += ch; esc = false; continue; }
+      if (ch === "\\") { out += ch; esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; out += ch; continue; }
+      if (inStr && ch === "\n") { out += "\\n"; continue; }
+      if (inStr && ch === "\r") { out += "\\r"; continue; }
+      if (inStr && ch === "\t") { out += "\\t"; continue; }
+      out += ch;
+    }
+    return out;
+  };
+
+  const candidates = [text];
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fence) candidates.push(fence[1].trim());
+  const first = text.indexOf("{"), last = text.lastIndexOf("}");
+  if (first !== -1 && last > first) candidates.push(text.slice(first, last + 1));
+
+  for (const c of candidates) {
+    for (const attempt of [c, repair(c)]) {
+      try {
+        const p = JSON.parse(attempt);
+        if (p && typeof p === "object" && typeof p.reply === "string") return p.reply.trim();
+      } catch { /* try next */ }
+    }
+  }
+  const m = text.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (m) {
+    try { return (JSON.parse(`"${m[1]}"`) as string).trim(); }
+    catch {
+      return m[1].replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "")
+        .replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
+    }
+  }
+  return text;
+}
+
 function Chat() {
   const { user } = useAuth();
   const { activeId } = useActiveProfile();
@@ -129,7 +180,11 @@ function Chat() {
       .order("created_at", { ascending: true })
       .limit(300)
       .then(({ data }: any) => {
-        setMessages((data || []).map((m: any) => ({ role: m.role, content: m.content, id: m.id })));
+        setMessages((data || []).map((m: any) => ({
+          role: m.role,
+          content: m.role === "assistant" ? cleanReply(m.content) : m.content,
+          id: m.id,
+        })));
       });
   }, [uid, conv]);
 
@@ -219,7 +274,9 @@ function Chat() {
       const result = await supabase.functions.invoke("chat", { body: { messages: history, active_user_id: uid } });
       if (result.error) throw result.error;
       const data: any = result.data;
-      const reply: string = data.reply;
+      // The Edge Function returns clean prose, but clean once more here as a
+      // safety net so a raw-JSON reply is never stored or shown.
+      const reply: string = cleanReply(data.reply);
       await (supabase as any).from("chat_messages").insert({ user_id: uid, role: "assistant", content: reply, conversation_id: cid, document_id: linkedDocId });
       await (supabase as any).from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", cid);
       loadConversations();
