@@ -160,17 +160,20 @@ function Chat() {
   const recRef = useRef<any>(null);
   const autoAskedRef = useRef(false);
 
-  // Recent conversations, for the "riapri" list.
+  // Conversations for the "riapri" list. When a document context is active
+  // (arrived via ?doc=<id>, e.g. "Vedi conversazioni su questo documento"),
+  // restrict the list to conversations linked to THAT document; otherwise show
+  // the user's recent conversations across everything.
   const loadConversations = useCallback(async () => {
     if (!uid) { setConversations([]); return; }
-    const { data } = await (supabase as any)
+    let query = (supabase as any)
       .from("conversations")
       .select("id,title,document_id,updated_at")
-      .eq("user_id", uid)
-      .order("updated_at", { ascending: false })
-      .limit(20);
+      .eq("user_id", uid);
+    if (docId) query = query.eq("document_id", docId);
+    const { data } = await query.order("updated_at", { ascending: false }).limit(20);
     setConversations(data || []);
-  }, [uid]);
+  }, [uid, docId]);
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
   // Open a saved conversation (?conv=<id>) → load its messages; otherwise start fresh.
@@ -523,7 +526,7 @@ function Chat() {
 
             {conversations.length > 0 && (
               <div className="space-y-1.5 pt-2">
-                <div className="px-1 text-xs font-medium text-muted-foreground">Conversazioni recenti</div>
+                <div className="px-1 text-xs font-medium text-muted-foreground">{docId ? "Conversazioni su questo documento" : "Conversazioni recenti"}</div>
                 {conversations.map((c) => (
                   <Link
                     key={c.id}
