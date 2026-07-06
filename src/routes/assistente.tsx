@@ -122,13 +122,18 @@ function cleanReply(raw: string): string {
       } catch { /* try next */ }
     }
   }
-  const m = text.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)"/);
-  if (m) {
-    try { return (JSON.parse(`"${m[1]}"`) as string).trim(); }
-    catch {
-      return m[1].replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "")
-        .replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
-    }
+  // Bound the reply by the next sibling key (or the closing brace) rather than
+  // the first quote, so unescaped double-quotes inside the prose don't truncate
+  // the message. If no terminator is found the text was cut off mid-reply, so
+  // keep everything present.
+  const start = /"reply"\s*:\s*"/.exec(text);
+  if (start) {
+    const rest = text.slice(start.index + start[0].length);
+    const end = /"\s*,\s*"(?:memory_suggestions?|prevention_suggestion|reminder_action|memory_delete)"|"\s*\}/.exec(rest);
+    const body = (end ? rest.slice(0, end.index) : rest.replace(/"\s*$/, ""))
+      .replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "")
+      .replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    if (body.trim()) return body.trim();
   }
   return text;
 }

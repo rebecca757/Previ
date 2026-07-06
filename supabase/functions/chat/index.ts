@@ -56,21 +56,22 @@ function repairJsonControlChars(s: string): string {
   return out;
 }
 
-// Last-resort recovery: pull the "reply" value out with a regex even when the
-// surrounding JSON is broken beyond repair or truncated mid-object. `reply` is
-// always the first field in the required format, so this survives a response
-// cut off at max_tokens. Structured suggestions are dropped in this case —
-// showing clean prose without an optional "save" button beats raw JSON.
+// Last-resort recovery: pull the "reply" value out even when the surrounding
+// JSON is broken beyond repair or truncated mid-object. The reply is bounded by
+// the next sibling key (…","memory_suggestions":…) or the closing brace — NOT by
+// the first quote — so unescaped double-quotes the model wrote inside the prose
+// (e.g. il valore "alto") don't cut the message short. If no terminator is found
+// the response was truncated mid-reply, so we keep everything that arrived.
+// `reply` is always the first field, so this survives truncation at max_tokens.
 function salvageReply(text: string): string | null {
-  const m = text.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)"/);
-  if (!m) return null;
-  try {
-    return (JSON.parse(`"${m[1]}"`) as string).trim();
-  } catch {
-    return m[1]
-      .replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "")
-      .replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
-  }
+  const start = /"reply"\s*:\s*"/.exec(text);
+  if (!start) return null;
+  const rest = text.slice(start.index + start[0].length);
+  const end = /"\s*,\s*"(?:memory_suggestions?|prevention_suggestion|reminder_action|memory_delete)"|"\s*\}/.exec(rest);
+  const body = (end ? rest.slice(0, end.index) : rest.replace(/"\s*$/, ""))
+    .replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "")
+    .replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  return body.trim() || null;
 }
 
 // The model is asked to answer with a JSON object { reply, ... }, but it may
@@ -193,7 +194,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 4096,
+        max_tokens: 8192,
         system,
         messages,
         tools: TOOLS,
@@ -241,7 +242,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 4096,
+          max_tokens: 8192,
           system,
           messages: [
             ...messages,
