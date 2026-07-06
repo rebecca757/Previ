@@ -94,6 +94,10 @@ function Chat() {
   const [listening, setListening] = useState(false);
   const [discOpen, setDiscOpen] = useState(true);
   const [docContext, setDocContext] = useState<{ id: string; title: string; interpretation: string | null } | null>(null);
+  // True once we've *attempted* to resolve the document context (even if it came
+  // back null). The auto-ask flow waits on this rather than on docContext being
+  // truthy, so a failed/empty doc fetch can never silently swallow the question.
+  const [docLoaded, setDocLoaded] = useState(false);
   const [convId, setConvId] = useState<string | null>(conv ?? null);
   const [conversations, setConversations] = useState<{ id: string; title: string; document_id: string | null; updated_at: string }[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
@@ -131,23 +135,31 @@ function Chat() {
 
   // Resolve the document context: from the open conversation, or from ?doc=<id>.
   useEffect(() => {
-    if (!uid) { setDocContext(null); return; }
+    if (!uid) { setDocContext(null); setDocLoaded(true); return; }
+    let cancelled = false;
+    setDocLoaded(false);
     (async () => {
-      let documentId: string | null = null;
-      if (conv) {
-        const { data: c } = await (supabase as any).from("conversations").select("document_id").eq("id", conv).maybeSingle();
-        documentId = c?.document_id ?? null;
-      } else if (docId) {
-        documentId = docId;
+      try {
+        let documentId: string | null = null;
+        if (conv) {
+          const { data: c } = await (supabase as any).from("conversations").select("document_id").eq("id", conv).maybeSingle();
+          documentId = c?.document_id ?? null;
+        } else if (docId) {
+          documentId = docId;
+        }
+        if (!documentId) { if (!cancelled) setDocContext(null); return; }
+        const { data } = await supabase
+          .from("documents")
+          .select("id,title,ai_full_interpretation")
+          .eq("id", documentId)
+          .maybeSingle();
+        if (!cancelled) setDocContext(data ? { id: data.id, title: data.title, interpretation: (data as any).ai_full_interpretation ?? null } : null);
+      } finally {
+        // Always mark as resolved so the auto-ask never hangs on a failed fetch.
+        if (!cancelled) setDocLoaded(true);
       }
-      if (!documentId) { setDocContext(null); return; }
-      const { data } = await supabase
-        .from("documents")
-        .select("id,title,ai_full_interpretation")
-        .eq("id", documentId)
-        .maybeSingle();
-      setDocContext(data ? { id: data.id, title: data.title, interpretation: (data as any).ai_full_interpretation ?? null } : null);
     })();
+    return () => { cancelled = true; };
   }, [uid, conv, docId]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -155,14 +167,14 @@ function Chat() {
   // Auto-send the question passed from the referto page, once context + thread are ready.
   useEffect(() => {
     if (!ask || !uid || autoAskedRef.current) return;
-    if (docId && !docContext) return; // wait for doc context so the AI gets it on the first turn
+    if (docId && !docLoaded) return; // wait until the doc context has been *attempted* (see docLoaded)
     autoAskedRef.current = true;
     const q = ask;
     // Clear ?ask from the URL so a refresh doesn't re-send it.
     navigate({ to: "/assistente", search: docId ? { doc: docId } : {}, replace: true });
     send(q);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ask, uid, docId, docContext]);
+  }, [ask, uid, docId, docLoaded]);
 
   async function send(text?: string) {
     const content = (text ?? input).trim();
@@ -172,7 +184,6 @@ function Chat() {
     setMessages((m) => [...m, newUser, { role: "assistant", content: "…" }]);
     setSending(true);
     try {
-      const isFirstTurn = messages.length === 0;
       const linkedDocId = docContext?.id ?? docId ?? null;
 
       // Create the conversation lazily on the first message so empty chats aren't stored.
@@ -190,14 +201,18 @@ function Chat() {
 
       await (supabase as any).from("chat_messages").insert({ user_id: uid, role: "user", content, conversation_id: cid, document_id: linkedDocId });
       // When a document context is active, inject its title + interpretation into the
-      // FIRST turn so the AI knows what referto we're discussing — without storing that
-      // bulky context as the visible message (we persist only the user's question).
+      // FIRST user message of every request so the AI always knows which referto we're
+      // discussing — including follow-up turns, since we persist only the plain question
+      // and rebuild the history from it each time. The bulky context is never stored.
       const history = [...messages, newUser].map((m) => ({ role: m.role, content: m.content }));
-      if (docContext && isFirstTurn && history.length > 0) {
-        const ctx = `[Contesto: il paziente fa riferimento al documento "${docContext.title}".` +
-          (docContext.interpretation ? ` Interpretazione AI del documento:\n${docContext.interpretation}` : "") +
-          `]\n\nDomanda: ${history[history.length - 1].content}`;
-        history[history.length - 1] = { role: "user", content: ctx };
+      if (docContext) {
+        const firstUserIdx = history.findIndex((h) => h.role === "user");
+        if (firstUserIdx !== -1 && !history[firstUserIdx].content.startsWith("[Contesto:")) {
+          const ctx = `[Contesto: il paziente fa riferimento al documento "${docContext.title}".` +
+            (docContext.interpretation ? ` Interpretazione AI del documento:\n${docContext.interpretation}` : "") +
+            `]\n\n${history[firstUserIdx].content}`;
+          history[firstUserIdx] = { role: "user", content: ctx };
+        }
       }
       // Always route AI calls through the server-side Edge Function so the
       // Anthropic API key stays on the server and is never shipped to the browser.
