@@ -14,11 +14,73 @@ type ParsedReply = {
   memory_delete: any;
 };
 
+// Turn a parsed object into our ParsedReply shape (handles the legacy singular
+// `memory_suggestion` key and empty arrays).
+function normalizeParsed(parsed: any): ParsedReply {
+  let memorySuggestions: any[] | null = null;
+  if (Array.isArray(parsed.memory_suggestions)) {
+    memorySuggestions = parsed.memory_suggestions.filter(Boolean);
+    if (memorySuggestions.length === 0) memorySuggestions = null;
+  } else if (parsed.memory_suggestion) {
+    memorySuggestions = [parsed.memory_suggestion];
+  }
+  return {
+    reply: parsed.reply,
+    memory_suggestions: memorySuggestions,
+    prevention_suggestion: parsed.prevention_suggestion || null,
+    reminder_action: parsed.reminder_action || null,
+    memory_delete: parsed.memory_delete || null,
+  };
+}
+
+// Claude frequently writes multi-paragraph replies with *literal* newlines (and
+// tabs) inside the "reply" string. Raw control characters inside a JSON string
+// are invalid JSON, so JSON.parse rejects the whole payload. Walk the text and
+// escape control chars only while inside a string literal — this repairs the
+// JSON without disturbing structural whitespace, so the full object (reply +
+// suggestions) is recovered intact.
+function repairJsonControlChars(s: string): string {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (esc) { out += ch; esc = false; continue; }
+    if (ch === "\\") { out += ch; esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr && ch === "\n") { out += "\\n"; continue; }
+    if (inStr && ch === "\r") { out += "\\r"; continue; }
+    if (inStr && ch === "\t") { out += "\\t"; continue; }
+    out += ch;
+  }
+  return out;
+}
+
+// Last-resort recovery: pull the "reply" value out with a regex even when the
+// surrounding JSON is broken beyond repair or truncated mid-object. `reply` is
+// always the first field in the required format, so this survives a response
+// cut off at max_tokens. Structured suggestions are dropped in this case —
+// showing clean prose without an optional "save" button beats raw JSON.
+function salvageReply(text: string): string | null {
+  const m = text.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (!m) return null;
+  try {
+    return (JSON.parse(`"${m[1]}"`) as string).trim();
+  } catch {
+    return m[1]
+      .replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "")
+      .replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
+  }
+}
+
 // The model is asked to answer with a JSON object { reply, ... }, but it may
-// wrap it in a ```json fence or surround it with prose. Parse defensively so
-// the user never sees raw JSON: try the string as-is, then a fenced block,
-// then the first {...} span; if none parse into an object with a string
-// `reply`, treat the whole text as a plain-text answer.
+// wrap it in a ```json fence, surround it with prose, emit invalid JSON (literal
+// newlines inside strings), or get truncated. Parse defensively in layers so the
+// user NEVER sees raw JSON:
+//   1) strict JSON.parse of the text / fenced block / first {...} span
+//   2) same, after repairing in-string control chars
+//   3) regex-salvage of just the "reply" value (handles truncation)
+//   4) only if there's no JSON at all, treat the text as a plain answer
 function parseModelReply(raw: string): ParsedReply {
   const text = (raw || "").trim();
   const plain: ParsedReply = {
@@ -37,29 +99,27 @@ function parseModelReply(raw: string): ParsedReply {
   const last = text.lastIndexOf("}");
   if (first !== -1 && last > first) candidates.push(text.slice(first, last + 1));
 
+  // (1) strict, then (2) repaired
   for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate);
-      if (parsed && typeof parsed === "object" && typeof parsed.reply === "string") {
-        let memorySuggestions: any[] | null = null;
-        if (Array.isArray(parsed.memory_suggestions)) {
-          memorySuggestions = parsed.memory_suggestions.filter(Boolean);
-          if (memorySuggestions.length === 0) memorySuggestions = null;
-        } else if (parsed.memory_suggestion) {
-          memorySuggestions = [parsed.memory_suggestion];
+    for (const attempt of [candidate, repairJsonControlChars(candidate)]) {
+      try {
+        const parsed = JSON.parse(attempt);
+        if (parsed && typeof parsed === "object" && typeof parsed.reply === "string") {
+          return normalizeParsed(parsed);
         }
-        return {
-          reply: parsed.reply,
-          memory_suggestions: memorySuggestions,
-          prevention_suggestion: parsed.prevention_suggestion || null,
-          reminder_action: parsed.reminder_action || null,
-          memory_delete: parsed.memory_delete || null,
-        };
+      } catch {
+        // try the next attempt / candidate
       }
-    } catch {
-      // try the next candidate
     }
   }
+
+  // (3) salvage only the reply text from broken or truncated JSON
+  const salvaged = salvageReply(text);
+  if (salvaged) {
+    return { reply: salvaged, memory_suggestions: null, prevention_suggestion: null, reminder_action: null, memory_delete: null };
+  }
+
+  // (4) not JSON — return the text as-is
   return plain;
 }
 
