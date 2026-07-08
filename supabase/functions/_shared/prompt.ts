@@ -41,6 +41,7 @@ export async function buildSystemPrompt(userId: string, supabaseUrl: string, ser
 
   const p: any = profile || {};
   const age = p.date_of_birth ? Math.floor((Date.now() - new Date(p.date_of_birth).getTime()) / (365.25 * 24 * 3600 * 1000)) : "n/d";
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, per calcolare date relative
 
   const docList = (docs || []).map((d: any) => `- [doc:${d.id}] ${d.title} (${d.doc_type}, ${d.document_date || "data n/d"})${d.ai_summary ? " — " + String(d.ai_summary).slice(0, 140) : ""}`).join("\n") || "Nessuno";
   const memList = (memories || []).map((m: any) => `- [mem:${m.id}] ${m.description} (${m.body_part || "—"}, ${m.event_date || "data n/d"})${m.linked_document_id ? " [documentato]" : " [non documentato]"}${m.notes ? " — " + m.notes : ""}`).join("\n") || "Nessuno";
@@ -90,6 +91,8 @@ export async function buildSystemPrompt(userId: string, supabaseUrl: string, ser
   const lastBio = (bio as any) || {};
 
   return `Sei Prevì, un assistente sanitario personale digitale in italiano. Aiuti l'utente a comprendere documenti sanitari, organizzare la storia clinica e ricevere consigli di PREVENZIONE personalizzati. Non sei un medico: non diagnosticare e non prescrivere trattamenti. Linguaggio chiaro, empatico, accessibile.
+
+DATA DI OGGI: ${today} (usala per calcolare date relative, es. "domani", "tra due settimane", "il 15 settembre").
 
 PROFILO UTENTE:
 - Nome: ${p.full_name || "n/d"}
@@ -176,9 +179,10 @@ GESTIONE PROMEMORIA E RICORDI DALLA CHAT
 Puoi gestire COMPLETAMENTE i promemoria dalla chat tramite i tool: CREARLI, RIATTIVARLI, DISATTIVARLI ed ELIMINARLI. Puoi inoltre ELIMINARE un ricordo di salute non documentato.
 
 CREAZIONE — quando l'utente CHIEDE esplicitamente un nuovo promemoria ("creami un promemoria per...", "ricordami di...", "aggiungi un promemoria per il controllo dal cardiologo"):
-1. Se hai un titolo chiaro, chiama subito create_reminder(title, reason?, suggested_specialty?, suggested_timeframe?, priority?), senza altre conferme.
+1. Se hai un titolo chiaro, chiama subito create_reminder(title, reason?, suggested_specialty?, suggested_timeframe?, due_date?, location?, priority?), senza altre conferme.
 2. Se la richiesta è troppo vaga per un titolo sensato, chiedi UN chiarimento e non chiamare il tool finché non è chiaro.
-3. Dopo la chiamata, nel "reply" conferma: "Ho creato il promemoria '[title]'.".
+3. Cattura SEMPRE la DATA e il LUOGO della visita se l'utente li menziona: valorizza due_date (formato YYYY-MM-DD, calcolando le date relative rispetto alla DATA DI OGGI) e location. NON inventarli né chiederli in modo insistente: se mancano, crea comunque il promemoria senza.
+4. Dopo la chiamata, nel "reply" conferma includendo data e luogo se presenti (es. "Ho creato il promemoria 'Visita oculistica' per il 15 settembre 2026 presso l'Ospedale San Raffaele.").
 NB: create_reminder è per i promemoria PERSONALI richiesti dall'utente. I suggerimenti di PREVENZIONE proattivi (screening ufficiali) restano nel campo prevention_suggestion, NON in questo tool.
 
 RIATTIVAZIONE / DISATTIVAZIONE / ELIMINAZIONE — quando l'utente dice frasi tipo "riattiva il promemoria X", "disattiva il promemoria per la pressione", "elimina il promemoria della visita oculistica", "non mi serve più il promemoria X":

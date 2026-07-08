@@ -6,6 +6,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Coerce whatever the model produced into a valid DATE (YYYY-MM-DD) or null, so
+// a malformed/partial date never fails the insert — the reminder is still saved,
+// just without a date.
+function normalizeDate(s?: string | null): string | null {
+  if (!s || typeof s !== "string") return null;
+  const t = s.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  if (/^\d{4}-\d{2}$/.test(t)) return `${t}-01`;
+  if (/^\d{4}$/.test(t)) return `${t}-01-01`;
+  return null;
+}
+
 type ParsedReply = {
   reply: string;
   memory_suggestions: any[] | null;
@@ -135,6 +147,8 @@ const TOOLS = [
         reason: { type: "string", description: "Motivo/descrizione del promemoria, se fornito o deducibile dalla richiesta" },
         suggested_specialty: { type: "string", description: "Specialità medica pertinente, se pertinente (es. 'Oculista', 'Cardiologo')" },
         suggested_timeframe: { type: "string", description: "Tempistica suggerita, se indicata dall'utente (es. 'entro 3 mesi', 'ogni anno')" },
+        due_date: { type: "string", description: "Data della visita in formato YYYY-MM-DD, se l'utente la indica (anche relativa, es. 'domani', 'il 15 settembre': calcolala rispetto alla DATA DI OGGI nel prompt). Ometti se non indicata." },
+        location: { type: "string", description: "Luogo della visita, se indicato dall'utente (es. 'Ospedale San Raffaele, Milano', 'studio del Dr. Rossi'). Ometti se non indicato." },
         priority: { type: "string", enum: ["urgent", "normal"], description: "'urgent' solo se l'utente indica urgenza o entro 3 mesi; altrimenti 'normal'" },
       },
       required: ["title"],
@@ -252,6 +266,8 @@ Deno.serve(async (req) => {
           reason: toolInput.reason || null,
           suggested_specialty: toolInput.suggested_specialty || null,
           suggested_timeframe: toolInput.suggested_timeframe || null,
+          due_date: normalizeDate(toolInput.due_date),
+          location: toolInput.location || null,
           source: "user_chat",
           status: "active",
           priority: toolInput.priority === "urgent" ? "urgent" : "normal",
