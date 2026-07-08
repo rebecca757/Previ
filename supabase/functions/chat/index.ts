@@ -126,6 +126,33 @@ function parseModelReply(raw: string): ParsedReply {
 
 const TOOLS = [
   {
+    name: "create_reminder",
+    description: "Crea un nuovo promemoria. Usare quando l'utente CHIEDE esplicitamente di creare/aggiungere un promemoria o di essere ricordato di qualcosa (es. 'creami un promemoria per la visita oculistica', 'ricordami di prenotare gli esami del sangue', 'aggiungi un promemoria per il controllo dal cardiologo'). NON usare per suggerimenti di prevenzione proattivi (screening ufficiali): quelli vanno nel campo prevention_suggestion.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Titolo breve del promemoria (es. 'Visita oculistica')" },
+        reason: { type: "string", description: "Motivo/descrizione del promemoria, se fornito o deducibile dalla richiesta" },
+        suggested_specialty: { type: "string", description: "Specialità medica pertinente, se pertinente (es. 'Oculista', 'Cardiologo')" },
+        suggested_timeframe: { type: "string", description: "Tempistica suggerita, se indicata dall'utente (es. 'entro 3 mesi', 'ogni anno')" },
+        priority: { type: "string", enum: ["urgent", "normal"], description: "'urgent' solo se l'utente indica urgenza o entro 3 mesi; altrimenti 'normal'" },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "activate_reminder",
+    description: "Riattiva un promemoria disattivato impostando enabled = true. Usare quando l'utente vuole riattivarlo (es. 'riattiva', 'attiva di nuovo', 'rimettilo tra i promemoria attivi'). Il promemoria deve essere tra quelli marcati [disattivato] nel prompt di sistema.",
+    input_schema: {
+      type: "object",
+      properties: {
+        reminder_id: { type: "string", description: "UUID del promemoria, estratto dal tag [rem:UUID] nel prompt di sistema" },
+        title: { type: "string", description: "Titolo del promemoria, per la conferma all'utente" },
+      },
+      required: ["reminder_id", "title"],
+    },
+  },
+  {
     name: "deactivate_reminder",
     description: "Disattiva un promemoria impostando enabled = false. Usare quando l'utente vuole disattivarlo (es. 'disattiva', 'non mi serve più', 'metti in pausa').",
     input_schema: {
@@ -217,7 +244,22 @@ Deno.serve(async (req) => {
 
       // Execute the tool server-side
       let dbError: any = null;
-      if (toolName === "deactivate_reminder") {
+      if (toolName === "create_reminder") {
+        ({ error: dbError } = await admin.from("reminders").insert({
+          user_id: targetUserId,
+          title: toolInput.title,
+          description: toolInput.reason || null,
+          reason: toolInput.reason || null,
+          suggested_specialty: toolInput.suggested_specialty || null,
+          suggested_timeframe: toolInput.suggested_timeframe || null,
+          source: "user_chat",
+          status: "active",
+          priority: toolInput.priority === "urgent" ? "urgent" : "normal",
+          enabled: true,
+        }));
+      } else if (toolName === "activate_reminder") {
+        ({ error: dbError } = await admin.from("reminders").update({ enabled: true }).eq("id", reminder_id).eq("user_id", targetUserId));
+      } else if (toolName === "deactivate_reminder") {
         ({ error: dbError } = await admin.from("reminders").update({ enabled: false }).eq("id", reminder_id).eq("user_id", targetUserId));
       } else if (toolName === "delete_reminder") {
         ({ error: dbError } = await admin.from("reminders").delete().eq("id", reminder_id).eq("user_id", targetUserId));
@@ -228,9 +270,13 @@ Deno.serve(async (req) => {
       // Fallback reply if the second call fails
       let reply = dbError
         ? `Non sono riuscito a completare l'operazione: ${dbError.message}`
-        : toolName === "deactivate_reminder"
-          ? `Ho disattivato il promemoria "${title}".`
-          : `Ho eliminato il promemoria "${title}".`;
+        : toolName === "create_reminder"
+          ? `Ho creato il promemoria "${title}".`
+          : toolName === "activate_reminder"
+            ? `Ho riattivato il promemoria "${title}".`
+            : toolName === "deactivate_reminder"
+              ? `Ho disattivato il promemoria "${title}".`
+              : `Ho eliminato il promemoria "${title}".`;
 
       // Second call — Claude generates the confirmation reply
       const secondRes = await fetch("https://api.anthropic.com/v1/messages", {

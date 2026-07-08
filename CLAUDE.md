@@ -48,12 +48,13 @@ Prevì is an Italian health management web app for adults 25-50. It helps users:
 - (none currently tracked)
 
 ## AI chat tools available
-- create_health_memory
-- create_reminder
-- activate_reminder
-- deactivate_reminder
-- delete_reminder
-- list_reminders
+Server-side Anthropic tools executed by the `chat` Edge Function (full reminder CRUD from chat):
+- create_reminder — creates a personal reminder the user explicitly asks for (source `user_chat`). Official prevention screenings still go through the `prevention_suggestion` JSON confirmation flow, not this tool.
+- activate_reminder — re-enables a disabled reminder (enabled=true). The system prompt lists both active and disabled reminders so the model can reference disabled ones.
+- deactivate_reminder — enabled=false
+- delete_reminder — hard delete
+
+Health memories are NOT created via a tool: the model proposes them in the `memory_suggestions` JSON field and the user confirms/saves them in the UI.
 
 ## Language
 All UI text is in Italian. Claude API responses must always be in Italian.

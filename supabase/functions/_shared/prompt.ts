@@ -9,7 +9,7 @@ export async function buildSystemPrompt(userId: string, supabaseUrl: string, ser
     admin.from("documents").select("id,title,doc_type,document_date,source,ai_summary").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: false }).limit(15),
     admin.from("health_memories").select("id,description,body_part,event_date,notes,linked_document_id").eq("user_id", userId).is("deleted_at", null).order("event_date", { ascending: false, nullsFirst: false }).limit(50),
     admin.from("biometric_history").select("weight_kg,height_cm,recorded_at").eq("user_id", userId).order("recorded_at", { ascending: false }).limit(1).maybeSingle(),
-    admin.from("reminders").select("id,title,description,suggested_specialty,status,source,enabled").eq("user_id", userId).eq("enabled", true).order("created_at", { ascending: false }).limit(30),
+    admin.from("reminders").select("id,title,description,suggested_specialty,status,source,enabled").eq("user_id", userId).order("enabled", { ascending: false }).order("created_at", { ascending: false }).limit(50),
     admin.from("health_conditions").select("id,name,start_date,end_date,status,notes").eq("user_id", userId).order("start_date", { ascending: false }),
     admin.from("family_history").select("id,relation,condition,onset_age,is_deceased,notes").eq("user_id", userId).order("relation"),
     admin.from("family_links").select("caregiver_user_id,managed_user_id,relation,link_type,status").eq("status", "active").or(`caregiver_user_id.eq.${userId},managed_user_id.eq.${userId}`),
@@ -44,7 +44,7 @@ export async function buildSystemPrompt(userId: string, supabaseUrl: string, ser
 
   const docList = (docs || []).map((d: any) => `- [doc:${d.id}] ${d.title} (${d.doc_type}, ${d.document_date || "data n/d"})${d.ai_summary ? " — " + String(d.ai_summary).slice(0, 140) : ""}`).join("\n") || "Nessuno";
   const memList = (memories || []).map((m: any) => `- [mem:${m.id}] ${m.description} (${m.body_part || "—"}, ${m.event_date || "data n/d"})${m.linked_document_id ? " [documentato]" : " [non documentato]"}${m.notes ? " — " + m.notes : ""}`).join("\n") || "Nessuno";
-  const remList = (reminders || []).map((r: any) => `- [rem:${r.id}] ${r.title}${r.suggested_specialty ? ` (${r.suggested_specialty})` : ""} [${r.status}, ${r.source}]`).join("\n") || "Nessuno";
+  const remList = (reminders || []).map((r: any) => `- [rem:${r.id}] ${r.title}${r.suggested_specialty ? ` (${r.suggested_specialty})` : ""} [${r.enabled ? "attivo" : "disattivato"}, ${r.status}, ${r.source}]`).join("\n") || "Nessuno";
   const yearOf = (d?: string | null) => (d ? String(d).slice(0, 4) : "data n/d");
   const condById: Record<string, any> = {};
   const condList = (conditions || []).map((c: any) => {
@@ -113,7 +113,7 @@ ${docList}
 RICORDI DI SALUTE (auto-dichiarati, NON verificati) — il marker [non documentato] indica un ricordo eliminabile:
 ${memList}
 
-PROMEMORIA ATTIVI (solo enabled=true):
+PROMEMORIA (attivi e disattivati — il marker [attivo]/[disattivato] indica lo stato):
 ${remList}
 
 ANAMNESI FAMILIARE (dati dichiarati dall'utente, non verificati):
@@ -173,16 +173,23 @@ Incrocia ANAMNESI FAMILIARE con profilo dell'utente. Usa SEMPRE linguaggio prude
 ═══════════════════════════════════════════
 GESTIONE PROMEMORIA E RICORDI DALLA CHAT
 ═══════════════════════════════════════════
-L'utente può chiederti di DISATTIVARE o ELIMINARE un promemoria, oppure di ELIMINARE un ricordo di salute non documentato.
+Puoi gestire COMPLETAMENTE i promemoria dalla chat tramite i tool: CREARLI, RIATTIVARLI, DISATTIVARLI ed ELIMINARLI. Puoi inoltre ELIMINARE un ricordo di salute non documentato.
 
-PROMEMORIA — quando l'utente dice frasi tipo "disattiva il promemoria per la pressione", "elimina il promemoria della visita oculistica", "non mi serve più il promemoria X":
-1. Cerca tra i PROMEMORIA ATTIVI quello che corrisponde per titolo/descrizione.
-2. Se NESSUNA corrispondenza: rispondi che non hai trovato promemoria attivi corrispondenti. reminder_action = null.
+CREAZIONE — quando l'utente CHIEDE esplicitamente un nuovo promemoria ("creami un promemoria per...", "ricordami di...", "aggiungi un promemoria per il controllo dal cardiologo"):
+1. Se hai un titolo chiaro, chiama subito create_reminder(title, reason?, suggested_specialty?, suggested_timeframe?, priority?), senza altre conferme.
+2. Se la richiesta è troppo vaga per un titolo sensato, chiedi UN chiarimento e non chiamare il tool finché non è chiaro.
+3. Dopo la chiamata, nel "reply" conferma: "Ho creato il promemoria '[title]'.".
+NB: create_reminder è per i promemoria PERSONALI richiesti dall'utente. I suggerimenti di PREVENZIONE proattivi (screening ufficiali) restano nel campo prevention_suggestion, NON in questo tool.
+
+RIATTIVAZIONE / DISATTIVAZIONE / ELIMINAZIONE — quando l'utente dice frasi tipo "riattiva il promemoria X", "disattiva il promemoria per la pressione", "elimina il promemoria della visita oculistica", "non mi serve più il promemoria X":
+1. Cerca tra i PROMEMORIA elencati sopra quello che corrisponde per titolo/descrizione (considera lo stato [attivo]/[disattivato]: per riattivare cerca tra i [disattivato], per disattivare tra gli [attivo]).
+2. Se NESSUNA corrispondenza: rispondi che non hai trovato promemoria corrispondenti. reminder_action = null.
 3. Se PIÙ corrispondenze: elencale nel "reply" e chiedi quale. NON chiamare alcun tool finché non è chiaro quale. reminder_action = null.
 4. Se UNA corrispondenza chiara: chiama il tool appropriato direttamente, senza chiedere ulteriore conferma all'utente:
+   - "riattiva" / "attiva di nuovo" / "rimettilo tra gli attivi" → chiama activate_reminder(reminder_id, title)
    - "disattiva" / "non mi serve più" / "metti in pausa" → chiama deactivate_reminder(reminder_id, title)
    - "elimina" / "cancella" / "rimuovi" → chiama delete_reminder(reminder_id, title)
-   Dopo la chiamata al tool, nel "reply" conferma brevemente: "Ho disattivato il promemoria '[title]'." oppure "Ho eliminato il promemoria '[title]'.". reminder_action = null.
+   Dopo la chiamata al tool, nel "reply" conferma brevemente (es. "Ho riattivato il promemoria '[title]'."). reminder_action = null.
 
 RICORDI DI SALUTE — quando l'utente chiede di eliminare un ricordo ("elimina il ricordo della slogatura", "togli il ricordo X", "quel ricordo non è più rilevante"):
 1. Cerca SOLO tra i ricordi marcati [non documentato]. I ricordi [documentato] NON possono essere eliminati dalla chat.
@@ -245,5 +252,5 @@ REGOLE DI PRIORITÀ:
 
 Massimo UN prevention_suggestion, UN reminder_action e UN memory_delete per risposta.
 
-IMPORTANTE: Puoi modificare i promemoria SOLO tramite i tool deactivate_reminder e delete_reminder. Per qualsiasi altro dato (ricordi, condizioni, farmaci, documenti) NON hai capacità di modifica diretta — indirizza l'utente alle sezioni dell'app.`;
+IMPORTANTE: Puoi gestire i promemoria SOLO tramite i tool create_reminder, activate_reminder, deactivate_reminder e delete_reminder. Per qualsiasi altro dato (ricordi, condizioni, farmaci, documenti) NON hai capacità di modifica diretta — indirizza l'utente alle sezioni dell'app.`;
 }
