@@ -28,7 +28,7 @@ const nav = [
   { to: "/dashboard", label: "Home", icon: Home },
   { to: "/archivio", label: "Archivio", icon: FolderHeart },
   { to: "/assistente", label: "Assistente", icon: MessageCircle },
-  { to: "/prevenzione", label: "Prevenzione", icon: ShieldCheck },
+  { to: "/prevenzione", label: "Visite", icon: ShieldCheck },
   { to: "/profilo", label: "Profilo", icon: User },
 ];
 

@@ -11,14 +11,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Bell, Trash2, ShieldCheck, ChevronDown, ChevronUp, Info, RefreshCw } from "lucide-react";
+import { Plus, Bell, Trash2, ShieldCheck, ChevronDown, ChevronUp, Info, RefreshCw, CalendarDays, MapPin } from "lucide-react";
 import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { toast } from "sonner";
 import { OFFICIAL_SCREENINGS, getEligibleScreenings, frequencyLabel, normalizeCondition, getRelationDegree, type OfficialScreening } from "@/lib/screenings";
 
 export const Route = createFileRoute("/prevenzione")({
-  head: () => ({ meta: [{ title: "Prevenzione — Prevì" }] }),
+  head: () => ({ meta: [{ title: "Visite — Prevì" }] }),
   component: () => <AuthGate><AppShell><Prevention /></AppShell></AuthGate>,
 });
 
@@ -27,6 +27,7 @@ type Rem = {
   title: string;
   description: string | null;
   due_date: string | null;
+  location?: string | null;
   enabled: boolean;
   priority?: "urgent" | "normal" | null;
   priority_reason?: string | null;
@@ -278,7 +279,7 @@ function Prevention() {
       <div className="flex justify-between items-start gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">Prevenzione</h1>
+            <h1 className="text-3xl font-bold">Visite</h1>
             <Button
               variant="ghost"
               size="icon"
@@ -296,12 +297,12 @@ function Prevention() {
       </div>
 
       <section className="space-y-2">
-        <div className="font-semibold flex items-center gap-2"><Bell className="w-4 h-4 text-primary" /> I tuoi promemoria personali</div>
+        <div className="font-semibold flex items-center gap-2"><Bell className="w-4 h-4 text-primary" /> Visite prenotate</div>
         {rems.length === 0 ? (
           <div className="bg-card border rounded-2xl p-10 text-center">
             <Bell className="w-10 h-10 text-primary mx-auto mb-3" />
-            <div className="font-semibold">Nessun promemoria attivo</div>
-            <p className="text-sm text-muted-foreground mt-1">Aggiungi uno degli screening qui sopra o crea un promemoria personalizzato.</p>
+            <div className="font-semibold">Nessuna visita prenotata</div>
+            <p className="text-sm text-muted-foreground mt-1">Aggiungi uno degli screening qui sopra o prenota una visita con "Aggiungi".</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -337,7 +338,12 @@ function Prevention() {
                         Ho classificato questo promemoria come urgente perché {r.priority_reason}.
                       </div>
                     )}
-                    {r.due_date && <div className="text-xs text-muted-foreground mt-1">{format(new Date(r.due_date), "d MMMM yyyy", { locale: it })}</div>}
+                    {(r.due_date || r.location) && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-1">
+                        {r.due_date && <span className="flex items-center gap-1"><CalendarDays className="w-3.5 h-3.5" />{format(new Date(r.due_date), "d MMMM yyyy", { locale: it })}</span>}
+                        {r.location && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{r.location}</span>}
+                      </div>
+                    )}
                   </div>
                   <Switch checked={r.enabled} onCheckedChange={() => toggle(r)} />
                   <Button variant="ghost" size="icon" onClick={() => del(r.id)}><Trash2 className="w-4 h-4" /></Button>
@@ -350,7 +356,7 @@ function Prevention() {
 
       <section className="bg-card border rounded-2xl p-4 space-y-3">
         <div>
-          <div className="font-semibold flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" /> Screening ufficiali per te</div>
+          <div className="font-semibold flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" /> Screening preventivi ufficiali per te</div>
           <div className="text-xs text-muted-foreground">Filtrati in base alla tua età e al tuo sesso biologico.</div>
         </div>
         {eligible.length === 0 ? (
@@ -408,15 +414,16 @@ function AddReminder({ onDone }: { onDone: () => void }) {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [date, setDate] = useState("");
+  const [location, setLocation] = useState("");
 
   async function save() {
     if (!uid || !queryFilter || !title) return;
     const { error } = await supabase.from("reminders").insert({
-      [queryFilter.col]: queryFilter.val, title, description: desc || null, due_date: date || null,
+      [queryFilter.col]: queryFilter.val, title, description: desc || null, due_date: date || null, location: location || null,
     } as any);
     if (error) { toast.error(error.message); return; }
-    toast.success("Promemoria aggiunto");
-    setOpen(false); setTitle(""); setDesc(""); setDate("");
+    toast.success("Visita aggiunta");
+    setOpen(false); setTitle(""); setDesc(""); setDate(""); setLocation("");
     onDone();
   }
 
@@ -424,11 +431,12 @@ function AddReminder({ onDone }: { onDone: () => void }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-1" />Aggiungi</Button></DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>Nuovo promemoria</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Nuova visita</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Titolo</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
           <div><Label>Descrizione</Label><Textarea value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
-          <div><Label>Data</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <div><Label>Data della visita</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <div><Label>Luogo della visita</Label><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Es. Ospedale San Raffaele, Milano" /></div>
           <Button onClick={save} className="w-full">Salva</Button>
         </div>
       </DialogContent>
